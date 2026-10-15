@@ -1,0 +1,5 @@
+[
+  {"disasterNumber":5632,"femaDeclarationString":"FM-5632-FL","declarationType":"FM","declarationTitle":"COW CREEK FIRE","incidentType":"Fire","declarationDate":"2026-04-23T00:00:00.000Z","designatedArea":"Levy (County)","fipsStateCode":"12","fipsCountyCode":"075","paProgramDeclared":true,"hmProgramDeclared":false,"iaProgramDeclared":false,"fyDeclared":2026},
+  {"disasterNumber":5631,"femaDeclarationString":"FM-5631-FL","declarationType":"FM","declarationTitle":"RAILROAD COMPLEX FIRE","incidentType":"Fire","declarationDate":"2026-04-22T00:00:00.000Z","designatedArea":"Putnam (County)","fipsStateCode":"12","fipsCountyCode":"107","paProgramDeclared":true,"hmProgramDeclared":false,"iaProgramDeclared":false,"fyDeclared":2026},
+  {"disasterNumber":5631,"femaDeclarationString":"FM-5631-FL","declarationType":"FM","declarationTitle":"RAILROAD COMPLEX FIRE","incidentType":"Fire","declarationDate":"2026-04-22T00:00:00.000Z","designatedArea":"Clay (County)","fipsStateCode":"12","fipsCountyCode":"019","paProgramDeclared":true,"hmProgramDeclared":false,"iaProgramDeclared":false,"fyDeclared":2026}
+]

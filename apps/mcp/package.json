@@ -1,0 +1,30 @@
+{
+  "name": "@radar/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "radar-mcp": "./dist/server.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "radar-src": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/server.js",
+    "dev": "tsx --conditions=radar-src src/server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@radar/api": "workspace:*",
+    "@radar/core": "workspace:*",
+    "@radar/store": "workspace:*"
+  }
+}

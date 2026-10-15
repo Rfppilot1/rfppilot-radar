@@ -1,0 +1,280 @@
+#!/usr/bin/env node
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { parseArgs } from "node:util";
+import {
+  FlMfmpConnector,
+  HttpClient,
+  PlaywrightFlTransport,
+  SamGovConnector,
+  TxEsbdConnector,
+  normalizeFlAd,
+  normalizeSam,
+  normalizeTxEsbd,
+  type ConnectorRun,
+  type SourceConnector,
+} from "@radar/connectors";
+import {
+  FirmProfile,
+  renderDigestMarkdown,
+  renderDigestText,
+  type Opportunity,
+  type SourceId,
+} from "@radar/core";
+import {
+  MemoryRepository,
+  PostgresRepository,
+  buildDigest,
+  ingestRun,
+  migrate,
+  rescoreProfile,
+  type Repository,
+} from "@radar/store";
+import pg from "pg";
+import { AnthropicReviewer } from "./anthropic-reviewer.js";
+
+/**
+ * Radar operations CLI. Production runs `radar daily` on a schedule (cron, a container job, or a queue worker).
+ *
+ *   radar profile load <file.json>                 create/replace a firm profile
+ *   radar ingest [--sources tx-esbd,fl-mfmp,sam-gov] [--max N]
+ *   radar import --source <id> --file <raw.json>   load raw source records captured elsewhere
+ *   radar score                                     rescore every profile
+ *   radar digest --tenant T --profile P [--since ISO] [--format text|markdown|json] [--out file]
+ *   radar daily [--out-dir data/digests] [--profiles a.json,b.json] [--imports src=file.json,...] [--sources none]
+ *                                                  ingest + score + one digest per profile
+ */
+const USER_AGENT = process.env.RADAR_USER_AGENT ?? "RFPPilotRadar/0.1 (+https://rfppilot.com)";
+
+async function openRepo(): Promise<Repository> {
+  if (process.env.DATABASE_URL) {
+    const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 4 });
+    await migrate(pool);
+    return new PostgresRepository(pool);
+  }
+  if (process.env.RADAR_ALLOW_MEMORY !== "1") {
+    throw new Error(
+      "DATABASE_URL is not set. Set RADAR_ALLOW_MEMORY=1 to run against a throwaway in-memory store.",
+    );
+  }
+  return new MemoryRepository();
+}
+
+function connectors(sources: SourceId[]): SourceConnector[] {
+  const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1500 });
+  const out: SourceConnector[] = [];
+  for (const s of sources) {
+    if (s === "tx-esbd") out.push(new TxEsbdConnector({ http }));
+    else if (s === "fl-mfmp")
+      out.push(
+        new FlMfmpConnector({
+          transport: new PlaywrightFlTransport({
+            userAgent: USER_AGENT,
+            executablePath: process.env.CHROMIUM_PATH,
+          }),
+        }),
+      );
+    else if (s === "sam-gov")
+      out.push(
+        new SamGovConnector({
+          http,
+          apiKey: process.env.SAM_API_KEY ?? "",
+          states: (process.env.RADAR_SAM_STATES ?? "FL,TX").split(","),
+        }),
+      );
+  }
+  return out;
+}
+
+const NORMALIZERS: Record<string, (raw: unknown, at: string) => Opportunity> = {
+  "tx-esbd": normalizeTxEsbd,
+  "fl-mfmp": normalizeFlAd,
+  "sam-gov": normalizeSam,
+};
+
+async function ingest(repo: Repository, sources: SourceId[], max?: number) {
+  for (const c of connectors(sources)) {
+    const started = new Date().toISOString();
+    try {
+      const run = await c.fetch({ maxRecords: max });
+      const r = await ingestRun(repo, run, started);
+      log({
+        event: "ingest",
+        source: c.id,
+        fetched: run.opportunities.length,
+        inserted: r.inserted.length,
+        updated: r.updated.length,
+        closed: r.closed.length,
+        rejected: run.rejected.length,
+        complete: run.complete,
+      });
+    } catch (err) {
+      // One failing source must not stop the others; the failure is recorded for monitoring.
+      await repo.recordRun({
+        source: c.id,
+        startedAt: started,
+        finishedAt: new Date().toISOString(),
+        fetched: 0,
+        inserted: 0,
+        updated: 0,
+        closed: 0,
+        rejected: 0,
+        complete: false,
+        error: (err as Error).message.slice(0, 500),
+      });
+      log({ event: "ingest_failed", source: c.id, error: (err as Error).message });
+    }
+  }
+}
+
+async function importFile(repo: Repository, source: string, file: string) {
+  const normalize = NORMALIZERS[source];
+  if (!normalize) throw new Error(`Unknown source ${source}`);
+  const raw = JSON.parse(await readFile(file, "utf8"));
+  const rows: unknown[] = Array.isArray(raw) ? raw : (raw.lines ?? raw.opportunitiesData ?? []);
+  const fetchedAt = new Date().toISOString();
+  // A manual import is never treated as the source's full list, so it never closes other records.
+  const run: ConnectorRun = {
+    source: source as SourceId,
+    opportunities: [],
+    rejected: [],
+    fetchedAt,
+    complete: false,
+  };
+  for (const r of rows) {
+    try {
+      run.opportunities.push(normalize(r, fetchedAt));
+    } catch (err) {
+      run.rejected.push({ sourceRecordId: null, error: (err as Error).message.slice(0, 300) });
+    }
+  }
+  const res = await ingestRun(repo, run, fetchedAt);
+  log({
+    event: "import",
+    source,
+    inserted: res.inserted.length,
+    updated: res.updated.length,
+    rejected: run.rejected.length,
+  });
+}
+
+async function scoreAll(repo: Repository) {
+  const now = new Date().toISOString();
+  // The semantic reviewer is optional: without ANTHROPIC_API_KEY, scoring is purely rule-based.
+  const reviewer = process.env.ANTHROPIC_API_KEY
+    ? new AnthropicReviewer(process.env.ANTHROPIC_API_KEY)
+    : undefined;
+  const maxReviews = Number(process.env.RADAR_MAX_REVIEWS ?? 50);
+  for (const p of await repo.listAllProfilesForWorker()) {
+    const scored = await rescoreProfile(repo, p, now, {
+      reviewer,
+      maxReviews,
+      onReviewError: (id, err) =>
+        log({ event: "review_failed", profile: p.id, opportunity: id, error: err.message }),
+    });
+    log({ event: "score", profile: p.id, scored, reviewer: reviewer?.id ?? null });
+  }
+}
+
+function log(o: Record<string, unknown>) {
+  process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), ...o })}\n`);
+}
+
+async function main() {
+  const { positionals, values } = parseArgs({
+    allowPositionals: true,
+    options: {
+      sources: { type: "string" },
+      source: { type: "string" },
+      file: { type: "string" },
+      max: { type: "string" },
+      tenant: { type: "string" },
+      profile: { type: "string" },
+      since: { type: "string" },
+      format: { type: "string" },
+      out: { type: "string" },
+      "out-dir": { type: "string" },
+      profiles: { type: "string" },
+      imports: { type: "string" },
+    },
+  });
+  const [cmd, sub, arg] = positionals;
+  const repo = await openRepo();
+  try {
+    const sources = (values.sources ?? "tx-esbd,fl-mfmp,sam-gov").split(",") as SourceId[];
+    const max = values.max ? Number(values.max) : undefined;
+    if (cmd === "profile" && sub === "load" && arg) {
+      const p = FirmProfile.parse(JSON.parse(await readFile(arg, "utf8")));
+      await repo.upsertProfile(p, new Date().toISOString());
+      log({ event: "profile_loaded", profile: p.id, tenant: p.tenantId });
+    } else if (cmd === "ingest") {
+      await ingest(repo, sources, max);
+    } else if (cmd === "import") {
+      if (!values.source || !values.file) throw new Error("import needs --source and --file");
+      await importFile(repo, values.source, values.file);
+    } else if (cmd === "score") {
+      await scoreAll(repo);
+    } else if (cmd === "digest") {
+      if (!values.tenant || !values.profile) throw new Error("digest needs --tenant and --profile");
+      const now = new Date().toISOString();
+      // Preview only: does not record a delivered digest.
+      const since =
+        values.since ??
+        (await repo.lastDigestAt(values.tenant, values.profile)) ??
+        new Date(Date.now() - 86_400_000).toISOString();
+      const d = await buildDigest(repo, values.tenant, values.profile, { since, now });
+      const out =
+        values.format === "json"
+          ? JSON.stringify(d, null, 2)
+          : values.format === "text"
+            ? renderDigestText(d)
+            : renderDigestMarkdown(d);
+      if (values.out) await writeFile(values.out, out);
+      else process.stdout.write(`${out}\n`);
+    } else if (cmd === "daily") {
+      // Optional: load profiles and pre-captured raw files first (useful with the in-memory store).
+      for (const f of (values.profiles ?? "").split(",").filter(Boolean)) {
+        await repo.upsertProfile(
+          FirmProfile.parse(JSON.parse(await readFile(f, "utf8"))),
+          new Date().toISOString(),
+        );
+      }
+      for (const spec of (values.imports ?? "").split(",").filter(Boolean)) {
+        const [source, file] = spec.split("=");
+        if (!source || !file) throw new Error("--imports entries look like source=file.json");
+        await importFile(repo, source, file);
+      }
+      if (values.sources !== "none") await ingest(repo, sources, max);
+      await scoreAll(repo);
+      const dir = values["out-dir"] ?? "data/digests";
+      await mkdir(dir, { recursive: true });
+      const now = new Date().toISOString();
+      for (const p of await repo.listAllProfilesForWorker()) {
+        // New = since the last delivered digest, so a skipped or late run loses nothing and a second run
+        // the same day repeats nothing. The first digest for a profile lists everything current.
+        const since = (await repo.lastDigestAt(p.tenantId, p.id)) ?? "1970-01-01T00:00:00.000Z";
+        const d = await buildDigest(repo, p.tenantId, p.id, { since, now });
+        const stem = `${dir}/${p.tenantId}-${p.id}-${now.slice(0, 10)}`;
+        await writeFile(`${stem}.md`, renderDigestMarkdown(d));
+        await writeFile(`${stem}.txt`, renderDigestText(d));
+        await repo.recordDigest(p.tenantId, p.id, now);
+        log({
+          event: "digest",
+          profile: p.id,
+          new: d.newMatches.length,
+          closing: d.closingSoon.length,
+          secondLook: d.secondLook.length,
+        });
+      }
+    } else {
+      process.stderr.write("Usage: radar <profile load|ingest|import|score|digest|daily> [options]\n");
+      process.exitCode = 2;
+    }
+  } finally {
+    await repo.close();
+  }
+}
+
+main().catch((err) => {
+  log({ event: "fatal", error: (err as Error).message });
+  process.exit(1);
+});

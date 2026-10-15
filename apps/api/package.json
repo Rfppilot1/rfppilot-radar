@@ -1,0 +1,30 @@
+{
+  "name": "@radar/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "radar-src": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/server.js",
+    "dev": "tsx --conditions=radar-src src/server.ts"
+  },
+  "dependencies": {
+    "@radar/core": "workspace:*",
+    "@radar/store": "workspace:*",
+    "fastify": "^5.2.0",
+    "pg": "^8.13.0",
+    "zod": "^3.25.0",
+    "zod-to-json-schema": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0"
+  }
+}

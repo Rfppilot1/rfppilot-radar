@@ -1,0 +1,30 @@
+{
+  "name": "@radar/store",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "radar-src": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "files": [
+    "dist",
+    "migrations"
+  ],
+  "dependencies": {
+    "@radar/core": "workspace:*",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0",
+    "@types/pg": "^8.11.0"
+  }
+}

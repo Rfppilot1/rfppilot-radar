@@ -1,0 +1,31 @@
+import { MemoryRepository, PostgresRepository, migrate } from "@radar/store";
+import pg from "pg";
+import { buildApp } from "./app.js";
+import { ApiKeyAuth } from "./auth.js";
+
+const auth = ApiKeyAuth.fromEnv(process.env.RADAR_API_KEYS);
+let repo;
+if (process.env.DATABASE_URL) {
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
+  await migrate(pool);
+  repo = new PostgresRepository(pool);
+} else if (process.env.RADAR_ALLOW_MEMORY === "1") {
+  console.warn("Using an in-memory store (RADAR_ALLOW_MEMORY=1); data is lost on restart.");
+  repo = new MemoryRepository();
+} else {
+  throw new Error(
+    "DATABASE_URL is not set. Set RADAR_ALLOW_MEMORY=1 to run against a throwaway in-memory store.",
+  );
+}
+
+const app = buildApp({ repo, auth, logger: true });
+const port = Number(process.env.PORT ?? 8080);
+await app.listen({ host: "0.0.0.0", port });
+
+for (const sig of ["SIGINT", "SIGTERM"] as const) {
+  process.on(sig, async () => {
+    await app.close();
+    await repo.close();
+    process.exit(0);
+  });
+}

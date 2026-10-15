@@ -1,0 +1,233 @@
+{
+  "id": "isf-main",
+  "tenantId": "isf",
+  "name": "ISF, Inc. (draft profile, built from ISF's public record; ISF to confirm)",
+  "states": ["FL", "TX"],
+  "includeFederal": true,
+  "minDaysToRespond": 10,
+  "codes": [
+    {
+      "system": "NAICS",
+      "prefix": "541611",
+      "weight": 1,
+      "label": "Administrative and general management consulting"
+    },
+    {
+      "system": "NAICS",
+      "prefix": "541618",
+      "weight": 0.8,
+      "label": "Other management consulting"
+    },
+    {
+      "system": "NAICS",
+      "prefix": "541512",
+      "weight": 0.7,
+      "label": "Computer systems design"
+    },
+    {
+      "system": "NAICS",
+      "prefix": "541690",
+      "weight": 0.6,
+      "label": "Other scientific and technical consulting"
+    },
+    {
+      "system": "UNSPSC",
+      "prefix": "801015",
+      "weight": 1,
+      "label": "Business and corporate management consultation"
+    },
+    {
+      "system": "UNSPSC",
+      "prefix": "801016",
+      "weight": 0.9,
+      "label": "Project management"
+    },
+    {
+      "system": "UNSPSC",
+      "prefix": "811115",
+      "weight": 0.6,
+      "label": "Software or hardware engineering"
+    },
+    {
+      "system": "PSC",
+      "prefix": "R4",
+      "weight": 0.8,
+      "label": "Professional services: support"
+    },
+    {
+      "system": "PSC",
+      "prefix": "DA",
+      "weight": 0.5,
+      "label": "IT and telecom: application development"
+    },
+    {
+      "system": "NIGP",
+      "prefix": "91875",
+      "weight": 1,
+      "label": "Management Consulting"
+    },
+    {
+      "system": "NIGP",
+      "prefix": "91821",
+      "weight": 0.9,
+      "label": "Business Consulting, Large"
+    },
+    {
+      "system": "NIGP",
+      "prefix": "91871",
+      "weight": 0.9,
+      "label": "IT Consulting (NOC)"
+    },
+    {
+      "system": "NIGP",
+      "prefix": "91890",
+      "weight": 0.9,
+      "label": "Strategic Technology Planning and Consulting"
+    },
+    {
+      "system": "NIGP",
+      "prefix": "92065",
+      "weight": 1,
+      "label": "System Requirements Quality Assurance Review"
+    },
+    {
+      "system": "NIGP",
+      "prefix": "92044",
+      "weight": 0.9,
+      "label": "Risk Management for Software Development"
+    },
+    {
+      "system": "NIGP",
+      "prefix": "92015",
+      "weight": 0.8,
+      "label": "Assessment and Profiling Services of Software"
+    },
+    {
+      "system": "NIGP",
+      "prefix": "91865",
+      "weight": 0.6,
+      "label": "Human Resources, Relations Consulting"
+    },
+    {
+      "system": "NIGP",
+      "prefix": "91832",
+      "weight": 0.5,
+      "label": "Consulting Services (NOC)"
+    },
+    {
+      "system": "NIGP",
+      "prefix": "92064",
+      "weight": 0.4,
+      "label": "System Implementation and Engineering"
+    }
+  ],
+  "capabilities": [
+    {
+      "phrase": "independent verification and validation",
+      "weight": 1
+    },
+    {
+      "phrase": "IV&V",
+      "weight": 1
+    },
+    {
+      "phrase": "strategic planning",
+      "weight": 1
+    },
+    {
+      "phrase": "strategic plan",
+      "weight": 0.9
+    },
+    {
+      "phrase": "organizational assessment",
+      "weight": 1
+    },
+    {
+      "phrase": "program evaluation",
+      "weight": 1
+    },
+    {
+      "phrase": "feasibility study",
+      "weight": 0.9
+    },
+    {
+      "phrase": "business process",
+      "weight": 0.9
+    },
+    {
+      "phrase": "process improvement",
+      "weight": 0.9
+    },
+    {
+      "phrase": "workload analysis",
+      "weight": 0.9
+    },
+    {
+      "phrase": "needs assessment",
+      "weight": 0.8
+    },
+    {
+      "phrase": "project management",
+      "weight": 0.7
+    },
+    {
+      "phrase": "management consulting",
+      "weight": 1
+    },
+    {
+      "phrase": "IT consulting",
+      "weight": 0.8
+    },
+    {
+      "phrase": "IT assessment",
+      "weight": 0.8
+    },
+    {
+      "phrase": "technology roadmap",
+      "weight": 0.8
+    },
+    {
+      "phrase": "modernization",
+      "weight": 0.6
+    },
+    {
+      "phrase": "change management",
+      "weight": 0.7
+    },
+    {
+      "phrase": "organizational development",
+      "weight": 0.8
+    },
+    {
+      "phrase": "performance audit",
+      "weight": 0.6
+    }
+  ],
+  "exclusions": [
+    "janitorial",
+    "custodial",
+    "mowing",
+    "landscaping",
+    "roofing",
+    "paving",
+    "resurfacing",
+    "hvac",
+    "uniforms",
+    "food service",
+    "vehicles",
+    "pest control",
+    "construction services",
+    "architectural",
+    "ae rfq",
+    "construction manager",
+    "construction management at risk",
+    "energy optimization"
+  ],
+  "knownBuyers": [
+    "Department of Management Services",
+    "Office of Financial Regulation",
+    "Department of Health",
+    "Texas Department of Licensing and Regulation",
+    "City of Austin"
+  ]
+}
