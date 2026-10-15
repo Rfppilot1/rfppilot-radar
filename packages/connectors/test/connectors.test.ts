@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   FlMfmpConnector,
+  HttpFlTransport,
   HttpClient,
   HttpError,
   SamGovConnector,
@@ -128,7 +129,10 @@ describe("Florida MFMP", () => {
   });
 
   it("runs through a transport", async () => {
-    const transport = { searchAds: vi.fn(async () => fx("fl-mfmp.synthetic.json")) };
+    const transport = {
+      searchAds: vi.fn(async () => fx("fl-mfmp.synthetic.json")),
+      getDetail: vi.fn(async () => null),
+    };
     const run = await new FlMfmpConnector({ transport, now: () => AT }).fetch({ maxRecords: 50 });
     expect(transport.searchAds).toHaveBeenCalledWith(["OPEN", "PREVIEW"], 50);
     expect(run.opportunities.map((o) => o.kind)).toEqual(["itn", "rfp"]);
@@ -344,7 +348,102 @@ describe("empty responses", () => {
       minIntervalMs: 0,
     });
     expect((await new TxEsbdConnector({ http, now: () => AT }).fetch()).complete).toBe(false);
-    const fl = await new FlMfmpConnector({ transport: { searchAds: async () => [] }, now: () => AT }).fetch();
+    const fl = await new FlMfmpConnector({
+      transport: { searchAds: async () => [], getDetail: async () => null },
+      now: () => AT,
+    }).fetch();
     expect(fl.complete).toBe(false);
+  });
+});
+
+describe("Florida detail enrichment", () => {
+  const detail = fx("fl-mfmp-detail.2026-10-15.verbatim.json");
+  const listRow = {
+    advertisementId: 16313,
+    uniqueName: "RFP-16313",
+    agencyAdNumber: "RFP DLA-2026.04",
+    type: "Request for Proposals",
+    title: "Compensation Analysis and Market Pay Study",
+    openDate: "2026-06-19T18:21:59.000+00:00",
+    closeDate: "2027-01-31T22:00:00.000+00:00",
+    publishDate: "2026-06-19T18:21:59.000+00:00",
+    status: "OPEN",
+    version: 3,
+    organization: { organizationId: 30000013, name: "Department of Legal Affairs (DLA)" },
+    agency: "Department of Legal Affairs (DLA)",
+  };
+
+  it("adds UNSPSC codes, plain-text description, contact and original document names from the live detail", () => {
+    const o = normalizeFlAd(listRow, AT, detail);
+    expect(o.codes.map((c) => c.code)).toEqual(["80101500", "80101505", "80101511", "80141500"]);
+    expect(o.codes[0]).toMatchObject({
+      system: "UNSPSC",
+      description: "Business and corporate management consultation services",
+    });
+    expect(o.description).toMatch(/^The purpose of this Request for Proposal/);
+    expect(o.description).not.toMatch(/<p>|&nbsp;/);
+    expect(o.contact).toEqual({
+      name: "Jeri Roberts",
+      email: "Jeri.Roberts@myfloridalegal.com",
+      phone: "(850) 414-3417",
+    });
+    expect(o.documents.map((d) => d.filename)).toEqual([
+      "DLA-RFP DLA 2026.04 CA Mrkt Pay.pdf",
+      "Final DLA RFP 2026.04 Addendum 1.pdf",
+      "Notice of Intent to Award RFP DLA 2026.04.pdf",
+    ]);
+    expect(o.documents[0]!.url).toBe(
+      "https://vendor.myfloridamarketplace.com/mfmp/bids/detail/attachment/download?attachmentId=38446",
+    );
+    expect(o.hasAddendum).toBe(true);
+  });
+
+  it("marks an ad awarded when the agency has posted an intent to award, even though the portal still says OPEN", () => {
+    expect(normalizeFlAd(listRow, AT, detail).status).toBe("awarded");
+    const withoutAward = { ...detail, docs: detail.docs.slice(0, 2) };
+    expect(normalizeFlAd(listRow, AT, withoutAward).status).toBe("open");
+  });
+
+  it("changes the content hash when a new document is posted", () => {
+    const a = normalizeFlAd(listRow, AT, { ...detail, docs: detail.docs.slice(0, 1) });
+    const b = normalizeFlAd(listRow, AT, { ...detail, docs: detail.docs.slice(0, 2) });
+    expect(a.provenance.contentHash).not.toBe(b.provenance.contentHash);
+  });
+
+  it("calls the public JSON endpoints with Accept: application/json, and fetches details only for biddable ads", async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      if (url.includes("/detail")) return new Response(JSON.stringify(detail));
+      return new Response(
+        JSON.stringify([
+          listRow,
+          { ...listRow, advertisementId: 17068, uniqueName: "AD-17068", type: "Agency Decision" },
+        ]),
+      );
+    }) as unknown as typeof fetch;
+    const http = new HttpClient({ userAgent: "t", fetchImpl, sleep: noSleep, minIntervalMs: 0 });
+    const run = await new FlMfmpConnector({ transport: new HttpFlTransport(http), now: () => AT }).fetch();
+    expect(calls[0]!.init.method).toBe("POST");
+    expect(JSON.parse(calls[0]!.init.body as string)).toMatchObject({
+      status: ["OPEN", "PREVIEW"],
+      pageSize: 100,
+      page: 1,
+    });
+    expect((calls[0]!.init.headers as Record<string, string>).accept).toBe("application/json");
+    expect(calls.filter((c) => c.url.includes("/detail"))).toHaveLength(1);
+    expect(run.opportunities.map((o) => o.kind)).toEqual(["rfp", "award_decision"]);
+    expect(run.complete).toBe(true);
+  });
+
+  it("keeps the list record when a detail request fails", async () => {
+    const transport = {
+      searchAds: async () => [listRow],
+      getDetail: async () => Promise.reject(new Error("timeout")),
+    };
+    const run = await new FlMfmpConnector({ transport, now: () => AT }).fetch();
+    expect(run.opportunities).toHaveLength(1);
+    expect(run.opportunities[0]!.codes).toEqual([]);
+    expect(run.rejected[0]).toMatchObject({ sourceRecordId: "16313" });
   });
 });

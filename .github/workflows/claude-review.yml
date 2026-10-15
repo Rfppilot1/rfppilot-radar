@@ -1,0 +1,31 @@
+# Independent review of every pull request by Claude Code. Requires the ANTHROPIC_API_KEY repository secret.
+name: Claude Code review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this pull request for RFP Pilot Radar as an acquisition-diligence reviewer.
+            Read SECURITY.md, docs/ARCHITECTURE.md and docs/SOURCES.md first.
+            Report only real defects, most severe first: tenant isolation or auth gaps, correctness bugs in
+            scoring, digests or connectors, data-provenance or source-terms problems, missing tests for changed
+            behavior, and docs that no longer match the code. Give file:line, a concrete failure scenario and a fix.
+            Skip style nits. If there are no real defects, say so in one line.

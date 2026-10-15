@@ -18,8 +18,5 @@
   "dependencies": {
     "@radar/core": "workspace:*",
     "zod": "^3.25.0"
-  },
-  "optionalDependencies": {
-    "playwright-core": "^1.50.0"
   }
 }

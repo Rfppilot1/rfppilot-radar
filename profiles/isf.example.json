@@ -229,5 +229,8 @@
     "Department of Health",
     "Texas Department of Licensing and Regulation",
     "City of Austin"
-  ]
+  ],
+  "delivery": {
+    "email": []
+  }
 }

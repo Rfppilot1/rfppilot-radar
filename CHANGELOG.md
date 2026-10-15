@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 (2026-10-15)
+
+- Florida: direct public JSON endpoints replace the headless browser (no Chromium needed). Each biddable ad is
+  enriched with UNSPSC codes, description, contact and original document names; ads with a posted Intent to
+  Award leave the bid lane.
+- Daily email digest through Resend (HTML and text), sent to each profile's `delivery.email` list; a failed send
+  is not recorded as delivered.
+- FEMA Public Assistance declarations appear in the digest as demand signals.
+- Railway deployment config and guide; Claude Code review workflow for pull requests.
+
 ## 0.1.0 (2026-10-15)
 
 First working version. Hardened after an independent review before first release: authenticated route plugin,

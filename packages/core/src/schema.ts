@@ -157,6 +157,8 @@ export const FirmProfile = z.object({
   knownBuyers: z.array(z.string().min(2)).default([]),
   /** Minimum days before the due date for the firm to respond credibly. */
   minDaysToRespond: z.number().int().min(0).default(10),
+  /** Where the daily digest goes. Empty means the digest is only available through the API. */
+  delivery: z.object({ email: z.array(z.string().email()).max(20).default([]) }).default({ email: [] }),
 });
 export type FirmProfile = z.infer<typeof FirmProfile>;
 export type FirmProfileInput = z.input<typeof FirmProfile>;

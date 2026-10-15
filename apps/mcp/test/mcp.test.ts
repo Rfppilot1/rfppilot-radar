@@ -54,6 +54,7 @@ describe("Radar MCP server", () => {
       exclusions: [],
       knownBuyers: [],
       minDaysToRespond: 10,
+      delivery: { email: [] },
     };
     await repo.upsertProfile(profile, NOW);
     await rescoreProfile(repo, profile, NOW);

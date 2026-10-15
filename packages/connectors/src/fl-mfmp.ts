@@ -1,19 +1,32 @@
-import { Opportunity, type NoticeKind, type OpportunityStatus } from "@radar/core";
+import {
+  Opportunity,
+  isIntel,
+  type ClassificationCode,
+  type DocumentRef,
+  type NoticeKind,
+  type OpportunityStatus,
+} from "@radar/core";
 import { z } from "zod";
+import type { HttpClient } from "./http.js";
 import { opportunityId, type ConnectorRun, type FetchWindow, type SourceConnector } from "./types.js";
 import { clean, contentHash, toIso } from "./util.js";
 
 /**
  * Florida MyFloridaMarketPlace Vendor Information Portal (VIP), "State of Florida Advertisements".
- * Public search; no sign-in. Replaced the legacy Vendor Bid System on March 28, 2022.
+ * Public; no sign-in. Replaced the legacy Vendor Bid System on March 28, 2022.
  *
- * The public search page obtains its data through an anonymous session established by the page itself,
- * so collection runs through a transport that drives the public page (see PlaywrightFlTransport) rather
- * than calling the service directly. See docs/SOURCES.md#fl-mfmp.
+ * Collection uses the same public JSON endpoints the public pages call (verified without cookies on
+ * Oct 15, 2026): POST /mfmp/pub/search/bids (100 per page) for the list, and GET
+ * /mfmp/pub/search/bids/detail?id= for each biddable ad's commodity codes, description, contact and
+ * documents. Both require `Accept: application/json`; without it the server returns the web app's HTML.
+ * See docs/SOURCES.md#fl-mfmp.
  */
 export const FL_VIP_BASE = "https://vendor.myfloridamarketplace.com";
-export const FL_SEARCH_URL = `${FL_VIP_BASE}/search/bids`;
+export const FL_SEARCH_API = `${FL_VIP_BASE}/mfmp/pub/search/bids`;
+export const FL_DETAIL_API = `${FL_VIP_BASE}/mfmp/pub/search/bids/detail`;
+export const FL_DOWNLOAD_API = `${FL_VIP_BASE}/mfmp/bids/detail/attachment/download`;
 export const FL_TZ = "America/New_York";
+const PAGE_SIZE = 100;
 
 export const FlAd = z.object({
   advertisementId: z.number(),
@@ -39,6 +52,38 @@ export const FlAd = z.object({
 });
 export type FlAd = z.infer<typeof FlAd>;
 
+export const FlDetail = z
+  .object({
+    advertisementId: z.number(),
+    description: z.string().nullable().optional(),
+    commodityCodes: z
+      .array(z.object({ id: z.string(), value: z.string().nullable().optional() }))
+      .nullable()
+      .optional(),
+    docs: z
+      .array(
+        z.object({
+          attachmentId: z.number(),
+          fileName: z.string().nullable().optional(),
+          description: z.string().nullable().optional(),
+          date: z.string().nullable().optional(),
+        }),
+      )
+      .nullable()
+      .optional(),
+    responseContact: z
+      .object({
+        responseContact: z.string().nullable().optional(),
+        email: z.string().nullable().optional(),
+        ph: z.string().nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+    lastUpdateDate: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type FlDetail = z.infer<typeof FlDetail>;
+
 /** Ad types exactly as listed in the portal's "Ad Type" filter. */
 export const FL_AD_TYPES: Record<string, NoticeKind> = {
   "Invitation to Bid": "itb",
@@ -60,25 +105,74 @@ const STATUS: Record<string, OpportunityStatus> = {
   WITHDRAWN: "cancelled",
 };
 
-/** Field names exclude the volatile per-user "favorite" flag so it never registers as a content change. */
+/**
+ * An ad stays "OPEN" on the portal through its posting window even after the agency posts a notice of
+ * intent to award (observed: DLA RFP 2026.04, open until Jan 2027 with an Intent to Award posted July 21).
+ * When the agency has posted such a document, Radar marks the record awarded so it leaves the bid lane.
+ */
+const AWARD_DOC = /intent(ion)? to award|notice of (intended )?award|award (notice|recommendation)/i;
+
+/** Drops the per-user "favorite" flag so it never registers as a content change. */
 function hashable(raw: unknown): unknown {
-  const { favorite: _favorite, ...rest } = raw as Record<string, unknown>;
+  const { favorite: _favorite, ...rest } = (raw ?? {}) as Record<string, unknown>;
   return rest;
 }
 
-export function normalizeFlAd(raw: unknown, fetchedAt: string): Opportunity {
+export function htmlToText(html: string | null | undefined): string | null {
+  if (!html) return null;
+  const text = html
+    .replace(/<(br|\/p|\/li|\/div)\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
+  return text || null;
+}
+
+export function normalizeFlAd(raw: unknown, fetchedAt: string, detailRaw?: unknown): Opportunity {
   const ad = FlAd.parse(raw);
+  const detail = detailRaw === undefined || detailRaw === null ? null : FlDetail.parse(detailRaw);
   const buyerName = clean(ad.organization?.name) ?? clean(ad.agency) ?? "Unknown agency";
+
+  const codes: ClassificationCode[] = (detail?.commodityCodes ?? []).map((c) => ({
+    system: "UNSPSC",
+    code: c.id,
+    description: clean(c.value ?? null),
+  }));
+  const documents: DocumentRef[] = (detail?.docs ?? []).map((d) => ({
+    filename: d.fileName ?? null,
+    url: `${FL_DOWNLOAD_API}?attachmentId=${d.attachmentId}`,
+    description: clean(d.description ?? null),
+    postedAt: toIso(d.date ?? null),
+  }));
+  const awardPosted = (detail?.docs ?? []).some((d) =>
+    AWARD_DOC.test(`${d.description ?? ""} ${d.fileName ?? ""}`),
+  );
+  const contact = detail?.responseContact
+    ? {
+        name: clean(detail.responseContact.responseContact ?? null),
+        email: clean(detail.responseContact.email ?? null),
+        phone: clean(detail.responseContact.ph ?? null),
+      }
+    : null;
+  const status = awardPosted ? "awarded" : (STATUS[ad.status] ?? "unknown");
+
   return Opportunity.parse({
     id: opportunityId("fl-mfmp", String(ad.advertisementId)),
     source: "fl-mfmp",
     sourceRecordId: String(ad.advertisementId),
     solicitationNumber: clean(ad.agencyAdNumber ?? null),
     title: clean(ad.title) ?? ad.uniqueName,
-    description: null,
+    description: htmlToText(detail?.description),
     kind: FL_AD_TYPES[ad.type] ?? "other",
     kindLabel: ad.type,
-    status: STATUS[ad.status] ?? "unknown",
+    status,
     buyer: {
       name: buyerName,
       id: ad.organization?.organizationId != null ? String(ad.organization.organizationId) : null,
@@ -88,31 +182,76 @@ export function normalizeFlAd(raw: unknown, fetchedAt: string): Opportunity {
     postedAt: toIso(ad.publishDate ?? ad.openDate ?? null),
     dueAt: toIso(ad.closeDate ?? null),
     dueTimezone: ad.closeDate ? FL_TZ : null,
-    codes: [],
+    codes,
     setAside: null,
-    contact: null,
-    documents: [],
+    contact,
+    documents,
     version: ad.version ?? null,
-    hasAddendum: (ad.version ?? 1) > 1,
+    hasAddendum:
+      (ad.version ?? 1) > 1 || documents.some((d) => /addend/i.test(`${d.description} ${d.filename}`)),
     provenance: {
       source: "fl-mfmp",
       sourceUrl: `${FL_VIP_BASE}/search/bids/detail/${ad.advertisementId}`,
       fetchedAt,
-      contentHash: contentHash(hashable(raw)),
+      contentHash: contentHash({ list: hashable(raw), detail: detail ? hashable(detailRaw) : null }),
       basis: "fl-mfmp",
     },
   });
 }
 
-/** Supplies raw advertisement records from the public portal. */
+/** Supplies raw advertisement records and details from the public portal. */
 export interface FlTransport {
-  /** Returns raw ad objects for the given status filters, in portal order. */
+  /** Raw ad objects for the given status filters, in portal order. */
   searchAds(statuses: string[], maxRecords: number): Promise<unknown[]>;
+  /** Raw detail object for one ad. */
+  getDetail(advertisementId: number): Promise<unknown>;
+}
+
+/** Calls the portal's public JSON endpoints directly. */
+export class HttpFlTransport implements FlTransport {
+  constructor(private readonly http: HttpClient) {}
+
+  async searchAds(statuses: string[], maxRecords: number): Promise<unknown[]> {
+    const out: unknown[] = [];
+    for (let page = 1; out.length < maxRecords && page <= 50; page++) {
+      const body = {
+        pageSize: PAGE_SIZE,
+        type: [],
+        status: statuses,
+        agency: [],
+        adNumber: "",
+        agencyAdvertisementNumber: "",
+        title: "",
+        publishedDate: "",
+        openDate: "",
+        endDate: "",
+        commodityCodes: [],
+        intendsToParticipate: "",
+        assignee: "",
+        page,
+      };
+      const rows = await this.http.json<unknown>(FL_SEARCH_API, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!Array.isArray(rows)) throw new Error("MFMP search did not return a list");
+      out.push(...rows);
+      if (rows.length < PAGE_SIZE) break;
+    }
+    return out.slice(0, maxRecords);
+  }
+
+  async getDetail(advertisementId: number): Promise<unknown> {
+    return this.http.json<unknown>(`${FL_DETAIL_API}?id=${encodeURIComponent(String(advertisementId))}`);
+  }
 }
 
 export interface FlMfmpOptions {
   transport: FlTransport;
   statuses?: string[];
+  /** Upper bound on detail requests per run; biddable ads are enriched first, in portal order. */
+  maxDetails?: number;
   now?: () => string;
 }
 
@@ -133,9 +272,26 @@ export class FlMfmpConnector implements SourceConnector {
       fetchedAt,
       complete: raw.length > 0 && raw.length < max && !window.since,
     };
+    let detailBudget = this.opts.maxDetails ?? 300;
     for (const r of raw) {
       try {
-        const opp = normalizeFlAd(r, fetchedAt);
+        const ad = FlAd.parse(r);
+        // Details carry codes, description and documents. Intel notices (decisions, meetings) don't need them.
+        let detail: unknown = null;
+        const kind = FL_AD_TYPES[ad.type] ?? "other";
+        if (!isIntel(kind) && detailBudget > 0) {
+          detailBudget--;
+          try {
+            detail = await this.opts.transport.getDetail(ad.advertisementId);
+          } catch (err) {
+            // Keep the list-level record; note the missing detail for diagnosis.
+            run.rejected.push({
+              sourceRecordId: String(ad.advertisementId),
+              error: `detail: ${(err as Error).message.slice(0, 250)}`,
+            });
+          }
+        }
+        const opp = normalizeFlAd(r, fetchedAt, detail);
         if (window.since && opp.postedAt && opp.postedAt < window.since && !opp.hasAddendum) continue;
         run.opportunities.push(opp);
       } catch (err) {
@@ -147,64 +303,5 @@ export class FlMfmpConnector implements SourceConnector {
       }
     }
     return run;
-  }
-}
-
-/**
- * Drives the public search page in a headless browser. The page obtains an anonymous session URL for its
- * search service; we let the page run one ordinary search, then, inside the page, repeat that same request
- * (same URL, same JSON body shape, same JSON content type) with the status filter and page size we need
- * (100 per page, paced, with a per-request timeout). Only the status and page-size values differ from the
- * page's own request. Requires the optional dependency `playwright-core` and Chromium.
- */
-export class PlaywrightFlTransport implements FlTransport {
-  constructor(
-    private readonly opts: {
-      executablePath?: string;
-      userAgent: string;
-      timeoutMs?: number;
-      pauseMs?: number;
-    },
-  ) {}
-
-  async searchAds(statuses: string[], maxRecords: number): Promise<unknown[]> {
-    const { chromium } = await import("playwright-core");
-    const browser = await chromium.launch({ executablePath: this.opts.executablePath, headless: true });
-    try {
-      const page = await browser.newPage({ userAgent: this.opts.userAgent });
-      await page.goto(FL_SEARCH_URL, { waitUntil: "networkidle", timeout: this.opts.timeoutMs ?? 60_000 });
-      const searchRequest = page.waitForRequest(
-        (r) => r.method() === "POST" && /"page"\s*:/.test(r.postData() ?? ""),
-        { timeout: 30_000 },
-      );
-      await page.getByRole("button", { name: /^\s*search\s*$/i }).click();
-      const req = await searchRequest;
-      const template = {
-        url: req.url(),
-        body: JSON.parse(req.postData() ?? "{}") as Record<string, unknown>,
-      };
-      return await page.evaluate(
-        async ({ template, statuses, maxRecords, pauseMs }) => {
-          const out: unknown[] = [];
-          for (let p = 1; out.length < maxRecords && p <= 50; p++) {
-            const res = await fetch(template.url, {
-              method: "POST",
-              headers: { accept: "application/json", "content-type": "application/json" },
-              body: JSON.stringify({ ...template.body, status: statuses, pageSize: 100, page: p }),
-              signal: AbortSignal.timeout(30_000),
-            });
-            if (!res.ok) throw new Error(`MFMP search returned ${res.status}`);
-            const rows = (await res.json()) as unknown[];
-            out.push(...rows);
-            if (rows.length < 100) break;
-            await new Promise((r) => setTimeout(r, pauseMs));
-          }
-          return out.slice(0, maxRecords);
-        },
-        { template, statuses, maxRecords, pauseMs: this.opts.pauseMs ?? 1000 },
-      );
-    } finally {
-      await browser.close();
-    }
   }
 }

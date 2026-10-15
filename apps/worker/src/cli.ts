@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import {
   FlMfmpConnector,
   HttpClient,
-  PlaywrightFlTransport,
+  HttpFlTransport,
   SamGovConnector,
   TxEsbdConnector,
   normalizeFlAd,
@@ -15,6 +15,7 @@ import {
 } from "@radar/connectors";
 import {
   FirmProfile,
+  renderDigestHtml,
   renderDigestMarkdown,
   renderDigestText,
   type Opportunity,
@@ -31,6 +32,8 @@ import {
 } from "@radar/store";
 import pg from "pg";
 import { AnthropicReviewer } from "./anthropic-reviewer.js";
+import { ResendMailer, digestSubject, type Mailer } from "./mailer.js";
+import { recentSignals } from "./signals.js";
 
 /**
  * Radar operations CLI. Production runs `radar daily` on a schedule (cron, a container job, or a queue worker).
@@ -64,15 +67,7 @@ function connectors(sources: SourceId[]): SourceConnector[] {
   const out: SourceConnector[] = [];
   for (const s of sources) {
     if (s === "tx-esbd") out.push(new TxEsbdConnector({ http }));
-    else if (s === "fl-mfmp")
-      out.push(
-        new FlMfmpConnector({
-          transport: new PlaywrightFlTransport({
-            userAgent: USER_AGENT,
-            executablePath: process.env.CHROMIUM_PATH,
-          }),
-        }),
-      );
+    else if (s === "fl-mfmp") out.push(new FlMfmpConnector({ transport: new HttpFlTransport(http) }));
     else if (s === "sam-gov")
       out.push(
         new SamGovConnector({
@@ -142,7 +137,13 @@ async function importFile(repo: Repository, source: string, file: string) {
   };
   for (const r of rows) {
     try {
-      run.opportunities.push(normalize(r, fetchedAt));
+      // Florida captures may carry {list, detail} pairs (list row plus the public detail record).
+      const pair = r as { list?: unknown; detail?: unknown };
+      run.opportunities.push(
+        source === "fl-mfmp" && pair && pair.list !== undefined
+          ? normalizeFlAd(pair.list, fetchedAt, pair.detail)
+          : normalize(r, fetchedAt),
+      );
     } catch (err) {
       run.rejected.push({ sourceRecordId: null, error: (err as Error).message.slice(0, 300) });
     }
@@ -195,6 +196,7 @@ async function main() {
       "out-dir": { type: "string" },
       profiles: { type: "string" },
       imports: { type: "string" },
+      signals: { type: "string" },
     },
   });
   const [cmd, sub, arg] = positionals;
@@ -248,14 +250,47 @@ async function main() {
       const dir = values["out-dir"] ?? "data/digests";
       await mkdir(dir, { recursive: true });
       const now = new Date().toISOString();
+      const mailer: Mailer | null =
+        process.env.RESEND_API_KEY && process.env.RADAR_EMAIL_FROM
+          ? new ResendMailer(process.env.RESEND_API_KEY, process.env.RADAR_EMAIL_FROM)
+          : null;
+      const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1000 });
       for (const p of await repo.listAllProfilesForWorker()) {
         // New = since the last delivered digest, so a skipped or late run loses nothing and a second run
         // the same day repeats nothing. The first digest for a profile lists everything current.
-        const since = (await repo.lastDigestAt(p.tenantId, p.id)) ?? "1970-01-01T00:00:00.000Z";
+        const last = await repo.lastDigestAt(p.tenantId, p.id);
+        const since = last ?? "1970-01-01T00:00:00.000Z";
         const d = await buildDigest(repo, p.tenantId, p.id, { since, now });
+        if (values.signals !== "off") {
+          // FEMA signals are a bonus; a failure here never blocks the digest.
+          const signalsSince = last ?? new Date(Date.now() - 30 * 86_400_000).toISOString();
+          d.signals = await recentSignals(http, p.states, signalsSince).catch((err: Error) => {
+            log({ event: "signals_failed", profile: p.id, error: err.message });
+            return [];
+          });
+        }
         const stem = `${dir}/${p.tenantId}-${p.id}-${now.slice(0, 10)}`;
+        const html = renderDigestHtml(d);
+        const text = renderDigestText(d);
         await writeFile(`${stem}.md`, renderDigestMarkdown(d));
-        await writeFile(`${stem}.txt`, renderDigestText(d));
+        await writeFile(`${stem}.txt`, text);
+        await writeFile(`${stem}.html`, html);
+        let emailed = false;
+        if (mailer && p.delivery.email.length > 0) {
+          try {
+            await mailer.send({
+              to: p.delivery.email,
+              subject: digestSubject(p.name, d.newMatches.length, d.closingSoon.length, now),
+              html,
+              text,
+            });
+            emailed = true;
+          } catch (err) {
+            // Not recorded as delivered, so tomorrow's digest still includes today's new items.
+            log({ event: "email_failed", profile: p.id, error: (err as Error).message });
+            continue;
+          }
+        }
         await repo.recordDigest(p.tenantId, p.id, now);
         log({
           event: "digest",
@@ -263,6 +298,8 @@ async function main() {
           new: d.newMatches.length,
           closing: d.closingSoon.length,
           secondLook: d.secondLook.length,
+          signals: d.signals?.length ?? 0,
+          emailed,
         });
       }
     } else {
