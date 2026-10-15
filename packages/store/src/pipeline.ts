@@ -21,6 +21,7 @@ export interface RunLike {
   rejected: { sourceRecordId: string | null; error: string }[];
   fetchedAt: string;
   complete: boolean;
+  partialIds?: string[];
 }
 
 export interface IngestResult extends UpsertResult {
@@ -34,7 +35,17 @@ export interface IngestResult extends UpsertResult {
  * not see are closed (cancelled, awarded or withdrawn upstream), so they stop appearing as matches.
  */
 export async function ingestRun(repo: Repository, run: RunLike, startedAt: string): Promise<IngestResult> {
-  const result = await repo.upsertOpportunities(run.opportunities, run.fetchedAt);
+  // Partially fetched records never overwrite a fuller stored version; they only count as seen.
+  const partial = new Set(run.partialIds ?? []);
+  const stored = partial.size ? await repo.getOpportunities([...partial]) : new Map();
+  const keep = run.opportunities.filter((o) => partial.has(o.id) && stored.has(o.id));
+  const write = run.opportunities.filter((o) => !(partial.has(o.id) && stored.has(o.id)));
+  const result = await repo.upsertOpportunities(write, run.fetchedAt);
+  await repo.touchSeen(
+    keep.map((o) => o.id),
+    run.fetchedAt,
+  );
+  result.unchanged += keep.length;
   // Never close on an empty run, whatever the connector says.
   const close =
     run.complete && run.opportunities.length > 0 ? await repo.closeMissing(run.source, run.fetchedAt) : null;

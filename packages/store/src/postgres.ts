@@ -152,6 +152,14 @@ export class PostgresRepository implements Repository {
     return { ...result, closed: rows.map((r) => r.id) };
   }
 
+  async touchSeen(ids: string[], seenAt: string) {
+    if (ids.length === 0) return;
+    await this.db.query(
+      `UPDATE opportunities SET last_seen_at = GREATEST(last_seen_at, $2) WHERE id = ANY($1)`,
+      [ids, seenAt],
+    );
+  }
+
   async getOpportunity(id: string) {
     const row = (await this.db.query<{ data: unknown }>(`SELECT data FROM opportunities WHERE id=$1`, [id]))
       .rows[0];

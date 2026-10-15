@@ -111,6 +111,9 @@ const STATUS: Record<string, OpportunityStatus> = {
  * When the agency has posted such a document, Radar marks the record awarded so it leaves the bid lane.
  */
 const AWARD_DOC = /intent(ion)? to award|notice of (intended )?award|award (notice|recommendation)/i;
+/** Boilerplate posted with the solicitation (protest procedures, instructions) is not an award notice. */
+const AWARD_BOILERPLATE = /protest|procedure|instruction|template|sample|form/i;
+const ONE_DAY_MS = 86_400_000;
 
 /** Drops the per-user "favorite" flag so it never registers as a content change. */
 function hashable(raw: unknown): unknown {
@@ -151,9 +154,20 @@ export function normalizeFlAd(raw: unknown, fetchedAt: string, detailRaw?: unkno
     description: clean(d.description ?? null),
     postedAt: toIso(d.date ?? null),
   }));
-  const awardPosted = (detail?.docs ?? []).some((d) =>
-    AWARD_DOC.test(`${d.description ?? ""} ${d.fileName ?? ""}`),
-  );
+  // An award notice must be posted at least a day after the ad opened; documents posted with the solicitation
+  // itself (often protest-procedure boilerplate that mentions "intent to award") never count.
+  const openedAt = Date.parse(ad.openDate ?? ad.publishDate ?? "");
+  const awardPosted = (detail?.docs ?? []).some((d) => {
+    const label = `${d.description ?? ""} ${d.fileName ?? ""}`;
+    const postedAt = Date.parse(d.date ?? "");
+    return (
+      AWARD_DOC.test(label) &&
+      !AWARD_BOILERPLATE.test(label) &&
+      Number.isFinite(postedAt) &&
+      Number.isFinite(openedAt) &&
+      postedAt - openedAt >= ONE_DAY_MS
+    );
+  });
   const contact = detail?.responseContact
     ? {
         name: clean(detail.responseContact.responseContact ?? null),
@@ -270,16 +284,18 @@ export class FlMfmpConnector implements SourceConnector {
       opportunities: [],
       rejected: [],
       fetchedAt,
-      complete: raw.length > 0 && raw.length < max && !window.since,
+      complete: false,
+      partialIds: [],
     };
-    let detailBudget = this.opts.maxDetails ?? 300;
+    let detailBudget = this.opts.maxDetails ?? 1000;
     for (const r of raw) {
       try {
         const ad = FlAd.parse(r);
         // Details carry codes, description and documents. Intel notices (decisions, meetings) don't need them.
         let detail: unknown = null;
         const kind = FL_AD_TYPES[ad.type] ?? "other";
-        if (!isIntel(kind) && detailBudget > 0) {
+        const wantsDetail = !isIntel(kind);
+        if (wantsDetail && detailBudget > 0) {
           detailBudget--;
           try {
             detail = await this.opts.transport.getDetail(ad.advertisementId);
@@ -292,6 +308,7 @@ export class FlMfmpConnector implements SourceConnector {
           }
         }
         const opp = normalizeFlAd(r, fetchedAt, detail);
+        if (wantsDetail && detail === null) run.partialIds!.push(opp.id);
         if (window.since && opp.postedAt && opp.postedAt < window.since && !opp.hasAddendum) continue;
         run.opportunities.push(opp);
       } catch (err) {
@@ -302,6 +319,13 @@ export class FlMfmpConnector implements SourceConnector {
         });
       }
     }
+    // Complete only if nothing was cut off, no date filter applied, and every list row parsed (detail
+    // failures alone don't count: those records are still seen, just kept at their stored version).
+    run.complete =
+      raw.length > 0 &&
+      raw.length < max &&
+      !window.since &&
+      run.rejected.every((r) => r.error.startsWith("detail:"));
     return run;
   }
 }

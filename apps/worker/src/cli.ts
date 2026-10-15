@@ -255,6 +255,14 @@ async function main() {
           ? new ResendMailer(process.env.RESEND_API_KEY, process.env.RADAR_EMAIL_FROM)
           : null;
       const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1000 });
+      const unsubscribe = `mailto:${process.env.RADAR_UNSUBSCRIBE_EMAIL ?? "radar-unsubscribe@rfppilot.com"}?subject=unsubscribe`;
+      // One FEMA lookup per (states, since) per run, shared across profiles.
+      const signalCache = new Map<string, Promise<Awaited<ReturnType<typeof recentSignals>>>>();
+      const signalsFor = (states: string[], since: string) => {
+        const key = `${[...states].sort().join(",")}|${since.slice(0, 10)}`;
+        if (!signalCache.has(key)) signalCache.set(key, recentSignals(http, states, since));
+        return signalCache.get(key)!;
+      };
       for (const p of await repo.listAllProfilesForWorker()) {
         // New = since the last delivered digest, so a skipped or late run loses nothing and a second run
         // the same day repeats nothing. The first digest for a profile lists everything current.
@@ -264,7 +272,7 @@ async function main() {
         if (values.signals !== "off") {
           // FEMA signals are a bonus; a failure here never blocks the digest.
           const signalsSince = last ?? new Date(Date.now() - 30 * 86_400_000).toISOString();
-          d.signals = await recentSignals(http, p.states, signalsSince).catch((err: Error) => {
+          d.signals = await signalsFor(p.states, signalsSince).catch((err: Error) => {
             log({ event: "signals_failed", profile: p.id, error: err.message });
             return [];
           });
@@ -283,6 +291,7 @@ async function main() {
               subject: digestSubject(p.name, d.newMatches.length, d.closingSoon.length, now),
               html,
               text,
+              unsubscribe,
             });
             emailed = true;
           } catch (err) {

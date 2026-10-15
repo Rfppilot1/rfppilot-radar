@@ -76,6 +76,8 @@ export interface Repository {
    * wave of cancellations.
    */
   closeMissing(source: string, seenSince: string, maxShare?: number): Promise<CloseResult>;
+  /** Marks records as seen at `seenAt` without changing their content. */
+  touchSeen(ids: string[], seenAt: string): Promise<void>;
   getOpportunity(id: string): Promise<Opportunity | null>;
   getOpportunities(ids: string[]): Promise<Map<string, Opportunity>>;
   listOpportunities(q: OpportunityQuery): Promise<Opportunity[]>;

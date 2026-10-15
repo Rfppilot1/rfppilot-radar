@@ -182,7 +182,7 @@ export function renderDigestHtml(d: Digest): string {
   if (!d.newMatches.length && !d.closingSoon.length && !d.secondLook.length)
     parts.push(`<p style="${font};color:#556175">Nothing new that fits today.</p>`);
   parts.push(
-    `<p style="${font};font-size:11px;color:#6B7689;margin-top:18px">Every item links to the public posting. Scores are explained by the reasons shown; nothing is inferred beyond what the posting states.</p></div>`,
+    `<p style="${font};font-size:11px;color:#6B7689;margin-top:18px">Every item links to the public posting. Scores are explained by the reasons shown; nothing is inferred beyond what the posting states. To stop these emails, use the unsubscribe option in your mail app.</p></div>`,
   );
   return parts.join("");
 }

@@ -28,7 +28,9 @@ declare module "fastify" {
   }
 }
 
-const ProfileInput = FirmProfile.omit({ id: true, tenantId: true });
+/** Email delivery is set by an operator (worker CLI), never through the tenant API, so a key holder cannot
+ * make Radar send mail to arbitrary addresses. */
+const ProfileInput = FirmProfile.omit({ id: true, tenantId: true, delivery: true });
 const DecisionInput = z.object({
   opportunityId: z.string().min(3),
   decision: z.enum(["pursue", "pass", "watch"]),
@@ -239,8 +241,10 @@ function registerTenantRoutes(app: FastifyInstance, repo: Repository, now: () =>
 
   app.put("/profiles/:profileId", async (req) => {
     const { profileId } = ProfileId.parse(req.params);
-    const body = ProfileInput.parse(req.body);
-    const profile = FirmProfile.parse({ ...body, id: profileId, tenantId: tenantOf(req) });
+    const body = ProfileInput.strict().parse(req.body);
+    const tenantId = tenantOf(req);
+    const existing = await repo.getProfile(tenantId, profileId);
+    const profile = FirmProfile.parse({ ...body, id: profileId, tenantId, delivery: existing?.delivery });
     await repo.upsertProfile(profile, now());
     return profile;
   });

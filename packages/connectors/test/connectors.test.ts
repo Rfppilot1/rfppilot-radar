@@ -447,3 +447,54 @@ describe("Florida detail enrichment", () => {
     expect(run.rejected[0]).toMatchObject({ sourceRecordId: "16313" });
   });
 });
+
+describe("Florida review fixes", () => {
+  const detail = fx("fl-mfmp-detail.2026-10-15.verbatim.json");
+  const row = {
+    advertisementId: 16313,
+    uniqueName: "RFP-16313",
+    type: "Request for Proposals",
+    title: "Compensation Analysis and Market Pay Study",
+    openDate: "2026-06-19T18:21:59.000+00:00",
+    closeDate: "2027-01-31T22:00:00.000+00:00",
+    status: "OPEN",
+    version: 3,
+    organization: { name: "Department of Legal Affairs (DLA)" },
+  };
+
+  it("ignores award-related boilerplate posted with the solicitation", () => {
+    const boiler = {
+      ...detail,
+      docs: [
+        {
+          attachmentId: 1,
+          fileName: "Protest procedures after Notice of Intent to Award.pdf",
+          description: "Procedures",
+          date: "2026-08-01T00:00:00.000+00:00",
+        },
+        {
+          attachmentId: 2,
+          fileName: "Notice of Intent to Award.pdf",
+          description: "Intent to Award",
+          date: "2026-06-19T18:30:00.000+00:00",
+        },
+      ],
+    };
+    expect(normalizeFlAd(row, AT, boiler).status).toBe("open");
+  });
+
+  it("is not complete when a list row fails to parse, and reports details it could not fetch as partial", async () => {
+    const transport = {
+      searchAds: async () => [row, { advertisementId: "bad" }],
+      getDetail: async () => detail,
+    };
+    expect((await new FlMfmpConnector({ transport, now: () => AT }).fetch()).complete).toBe(false);
+    const flaky = {
+      searchAds: async () => [row],
+      getDetail: async () => Promise.reject(new Error("timeout")),
+    };
+    const run = await new FlMfmpConnector({ transport: flaky, now: () => AT }).fetch();
+    expect(run.complete).toBe(true);
+    expect(run.partialIds).toEqual(["fl-mfmp:16313"]);
+  });
+});

@@ -65,6 +65,13 @@ export class MemoryRepository implements Repository {
     return result;
   }
 
+  async touchSeen(ids: string[], seenAt: string) {
+    for (const id of ids) {
+      const v = this.opps.get(id);
+      if (v && v.lastSeen < seenAt) v.lastSeen = seenAt;
+    }
+  }
+
   async getOpportunity(id: string) {
     return this.opps.get(id)?.opp ?? null;
   }

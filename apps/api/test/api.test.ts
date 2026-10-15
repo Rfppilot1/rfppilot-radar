@@ -199,6 +199,26 @@ describe("Radar API", () => {
     }
   });
 
+  it("does not let a tenant set email recipients, and keeps operator-set delivery on update", async () => {
+    const bad = await app.inject({
+      method: "PUT",
+      url: "/v1/profiles/isf-main",
+      headers: ISF,
+      payload: { ...profileBody, delivery: { email: ["victim@example.com"] } },
+    });
+    expect(bad.statusCode).toBe(400);
+    await app.inject({ method: "PUT", url: "/v1/profiles/isf-main", headers: ISF, payload: profileBody });
+    const p = (await repo.getProfile("isf", "isf-main"))!;
+    await repo.upsertProfile({ ...p, delivery: { email: ["monica@example.com"] } }, NOW);
+    await app.inject({
+      method: "PUT",
+      url: "/v1/profiles/isf-main",
+      headers: ISF,
+      payload: { ...profileBody, name: "ISF 2" },
+    });
+    expect((await repo.getProfile("isf", "isf-main"))?.delivery.email).toEqual(["monica@example.com"]);
+  });
+
   it("stops listing matches once the opportunity is past due", async () => {
     await app.inject({ method: "PUT", url: "/v1/profiles/isf-main", headers: ISF, payload: profileBody });
     await rescoreProfile(repo, (await repo.getProfile("isf", "isf-main"))!, NOW);

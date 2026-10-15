@@ -18,6 +18,11 @@ export interface ConnectorRun {
    * Only complete runs may close records that disappeared from the source.
    */
   complete: boolean;
+  /**
+   * Records this run could only fetch partially (e.g. a Florida ad whose detail request failed). The pipeline
+   * keeps the stored version of these instead of overwriting richer data with a thinner copy.
+   */
+  partialIds?: string[];
 }
 
 export interface SourceConnector {

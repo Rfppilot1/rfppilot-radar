@@ -25,6 +25,16 @@ describe("email delivery", () => {
       from: "Radar <radar@rfppilot.com>",
     });
     expect(await m.send({ to: [], subject: "s", html: "", text: "" })).toEqual({ id: null });
+    await m.send({
+      to: ["a@b.co"],
+      subject: "s",
+      html: "h",
+      text: "t",
+      unsubscribe: "mailto:u@rfppilot.com?subject=unsubscribe",
+    });
+    expect(JSON.parse(req!.init.body as string).headers).toEqual({
+      "List-Unsubscribe": "<mailto:u@rfppilot.com?subject=unsubscribe>",
+    });
     expect(() => new ResendMailer("", "x@y.z")).toThrow(/RESEND_API_KEY/);
     expect(() => new ResendMailer("k", "nobody")).toThrow(/RADAR_EMAIL_FROM/);
   });

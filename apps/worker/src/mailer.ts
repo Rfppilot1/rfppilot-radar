@@ -7,6 +7,8 @@ export interface Mail {
   subject: string;
   html: string;
   text: string;
+  /** mailto: or https: unsubscribe target, sent as the List-Unsubscribe header. */
+  unsubscribe?: string;
 }
 
 export interface Mailer {
@@ -36,6 +38,7 @@ export class ResendMailer implements Mailer {
         subject: mail.subject,
         html: mail.html,
         text: mail.text,
+        ...(mail.unsubscribe ? { headers: { "List-Unsubscribe": `<${mail.unsubscribe}>` } } : {}),
       }),
     });
     if (!res.ok) throw new Error(`Resend API ${res.status}: ${(await res.text()).slice(0, 200)}`);

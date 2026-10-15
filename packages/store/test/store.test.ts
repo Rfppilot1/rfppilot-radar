@@ -292,4 +292,24 @@ describe.each(impls)("%s repository", (_name, make) => {
     await rescoreProfile(repo, edited, NOW, { reviewer, onReviewError: () => {} });
     expect(calls).toBe(5);
   });
+
+  it("keeps the stored version of a partially fetched record instead of overwriting it", async () => {
+    const full = opp("7", { codes: [{ system: "NIGP", code: "91875", description: null }] });
+    await repo.upsertOpportunities([full], "2026-10-14T10:00:00.000Z");
+    const thin = opp("7", { codes: [], provenance: { ...full.provenance, contentHash: "e".repeat(64) } });
+    const r = await ingestRun(
+      repo,
+      {
+        source: "tx-esbd",
+        opportunities: [thin],
+        rejected: [],
+        fetchedAt: NOW,
+        complete: false,
+        partialIds: ["tx-esbd:7"],
+      },
+      NOW,
+    );
+    expect(r.updated).toEqual([]);
+    expect((await repo.getOpportunity("tx-esbd:7"))?.codes).toHaveLength(1);
+  });
 });

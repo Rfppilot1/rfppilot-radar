@@ -9,6 +9,9 @@
   is not recorded as delivered.
 - FEMA Public Assistance declarations appear in the digest as demand signals.
 - Railway deployment config and guide; Claude Code review workflow for pull requests.
+- Review fixes: a failed Florida detail never overwrites the stored record; Florida runs with unparsed rows are
+  not complete; award detection ignores boilerplate and documents posted with the solicitation; email
+  recipients are operator-only with a List-Unsubscribe header; FEMA lookups are shared across profiles.
 
 ## 0.1.0 (2026-10-15)
 
