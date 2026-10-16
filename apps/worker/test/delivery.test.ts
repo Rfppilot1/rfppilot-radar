@@ -94,3 +94,16 @@ describe("FEMA signals", () => {
     expect(s[1]!.detail).toContain("Putnam, Clay");
   });
 });
+
+describe("operator-set recipients", () => {
+  it("parses RADAR_RECIPIENTS and overrides only the profiles it lists", async () => {
+    const { parseRecipients, recipientsFor } = await import("../src/mailer.js");
+    const m = parseRecipients(" isf/isf-main = ben@rfppilot.com, monica@example.com ; other/p1=a@b.co ");
+    expect(recipientsFor(m, "isf", "isf-main", [])).toEqual(["ben@rfppilot.com", "monica@example.com"]);
+    expect(recipientsFor(m, "other", "p1", ["x@y.co"])).toEqual(["a@b.co"]);
+    expect(recipientsFor(m, "isf", "second", ["kept@y.co"])).toEqual(["kept@y.co"]);
+    expect(parseRecipients(undefined).size).toBe(0);
+    expect(() => parseRecipients("isf-main=ben@rfppilot.com")).toThrow(/tenant\/profile/);
+    expect(() => parseRecipients("isf/isf-main=not-an-email")).toThrow(/invalid address/);
+  });
+});

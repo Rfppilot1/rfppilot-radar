@@ -32,7 +32,7 @@ import {
 } from "@radar/store";
 import pg from "pg";
 import { AnthropicReviewer } from "./anthropic-reviewer.js";
-import { ResendMailer, digestSubject, type Mailer } from "./mailer.js";
+import { ResendMailer, digestSubject, parseRecipients, recipientsFor, type Mailer } from "./mailer.js";
 import { recentSignals } from "./signals.js";
 
 /**
@@ -254,6 +254,7 @@ async function main() {
         process.env.RESEND_API_KEY && process.env.RADAR_EMAIL_FROM
           ? new ResendMailer(process.env.RESEND_API_KEY, process.env.RADAR_EMAIL_FROM)
           : null;
+      const recipientOverrides = parseRecipients(process.env.RADAR_RECIPIENTS);
       const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1000 });
       const unsubscribe = `mailto:${process.env.RADAR_UNSUBSCRIBE_EMAIL ?? "radar-unsubscribe@rfppilot.com"}?subject=unsubscribe`;
       // One FEMA lookup per (states, since) per run, shared across profiles.
@@ -284,10 +285,11 @@ async function main() {
         await writeFile(`${stem}.txt`, text);
         await writeFile(`${stem}.html`, html);
         let emailed = false;
-        if (mailer && p.delivery.email.length > 0) {
+        const to = recipientsFor(recipientOverrides, p.tenantId, p.id, p.delivery.email);
+        if (mailer && to.length > 0) {
           try {
             await mailer.send({
-              to: p.delivery.email,
+              to,
               subject: digestSubject(p.name, d.newMatches.length, d.closingSoon.length, now),
               html,
               text,

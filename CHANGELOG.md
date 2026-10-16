@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 (2026-10-16)
+
+- Digest recipients come from `RADAR_RECIPIENTS` (operator-set, outside the repository) and override stored
+  recipients for the profiles listed. The Railway worker reloads the profile file on every run, so no shell
+  session is needed to deploy a profile change.
+
 ## 0.2.0 (2026-10-15)
 
 - Florida: direct public JSON endpoints replace the headless browser (no Chromium needed). Each biddable ad is

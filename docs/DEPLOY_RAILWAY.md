@@ -9,7 +9,8 @@ build from this repository.
    service using `railway.json` (Dockerfile build, `/healthz` health check).
 2. In the project: New → Database → **PostgreSQL**.
 3. New → GitHub Repo → the same repository again. Rename it **worker**. In its Settings:
-   - Custom Start Command: `node apps/worker/dist/cli.js daily`
+   - Custom Start Command: `node apps/worker/dist/cli.js daily --profiles profiles/isf.example.json`
+     (reloads the profile from the repository on every run, so a profile change ships with a commit)
    - Cron Schedule: `45 10 * * 1-5` (6:45 AM Eastern on weekdays during daylight time; Railway cron is UTC)
    - Remove the health check (a cron job exits when done).
 
@@ -28,17 +29,21 @@ password never appears in this repo.
 | `RESEND_API_KEY`          |     | ✓      | resend.com → API Keys                                                                              |
 | `RADAR_EMAIL_FROM`        |     | ✓      | `Radar <radar@rfppilot.com>` (domain verified in Resend)                                           |
 | `RADAR_UNSUBSCRIBE_EMAIL` |     | ✓      | A mailbox you read, e.g. `radar-unsubscribe@rfppilot.com` (honor requests within 10 business days) |
+| `RADAR_RECIPIENTS`        |     | ✓      | `isf/isf-main=ben@rfppilot.com` at first; add Monica's address after the first clean digests       |
 | `RADAR_SAM_STATES`        |     | ✓      | `FL,TX`                                                                                            |
 | `RADAR_USER_AGENT`        |     | ✓      | `RFPPilotRadar/0.1 (+https://rfppilot.com; ben@rfppilot.com)`                                      |
 
 Never paste these values into chat, email, issues or code.
 
-## 3. Load ISF's profile (once, then whenever it changes)
+## 3. Profile and recipients
 
-Edit `profiles/isf.example.json` (set `delivery.email` to Monica's address once she agrees), then run from a
-Railway shell on the worker service: `node apps/worker/dist/cli.js profile load profiles/isf.example.json`.
-Recipients can only be set this way; the tenant API cannot change them. Tenants may update targeting (codes,
-phrases, states) through `PUT /v1/profiles/isf-main`, which keeps the operator-set recipients.
+The worker loads `profiles/isf.example.json` on every run (start command above). Recipients come only from
+`RADAR_RECIPIENTS`, never from the repository, so addresses stay out of git and the tenant API cannot change them.
+Start with the operator's address only; add the customer's after two or three clean digests. The first digest
+for a profile lists everything currently open, so expect a long first email.
+
+While the profile is loaded from the file each run, edits made through `PUT /v1/profiles/isf-main` are
+overwritten the next morning. Change targeting in the file instead until tenants manage their own profiles.
 
 ## 4. Check it
 
