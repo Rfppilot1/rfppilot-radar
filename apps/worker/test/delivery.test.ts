@@ -225,3 +225,23 @@ describe("operator-set recipients", () => {
     expect(() => parseRecipients("isf/isf-main=not-an-email")).toThrow(/invalid address/);
   });
 });
+
+describe("today in brief", () => {
+  it("drops a summary whose numbers are not in the digest, and renders a clean one first", async () => {
+    const { untraceableNumbers } = await import("../src/anthropic-summarizer.js");
+    const facts = "Read today: 605 open solicitations; 2 strong. New matches (22): due Oct 30";
+    expect(untraceableNumbers("Radar read 605 postings; 2 are strong, one due Oct 30.", facts)).toEqual([]);
+    expect(untraceableNumbers("Worth $4.5M, due Oct 30.", facts)).toEqual(["4.5"]);
+    const html = renderDigestHtml({
+      profileName: "ISF",
+      generatedAt: NOW,
+      summary: "DFPS pushed its IV&V deadline to Nov 6.",
+      newMatches: [],
+      closingSoon: [],
+      intel: [],
+      secondLook: [],
+    });
+    expect(html).toContain("TODAY IN BRIEF");
+    expect(html.indexOf("TODAY IN BRIEF")).toBeLessThan(html.indexOf("Nothing new"));
+  });
+});

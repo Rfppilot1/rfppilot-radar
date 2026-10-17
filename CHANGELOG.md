@@ -2,6 +2,10 @@
 
 ## 0.4.0 (2026-10-17)
 
+- **Today in brief.** Two or three plain sentences at the top of the email, written by Claude from the digest's
+  own facts only (changed deadlines and mandatory meetings first, then the strongest new match, then what closes
+  soon). Any summary containing a number not found in the digest is dropped, and the email goes out without it.
+  `RADAR_SUMMARY_MODEL` (default `claude-sonnet-5-5`) and `RADAR_SUMMARY=off` control it.
 - **Change alerts.** The digest opens with "Changed since last email": tracked bids (strong or possible matches, or
   ones marked pursue/watch) whose deadline moved, that got an addendum or new documents, a new or moved key date,
   or that were cancelled or pulled before their deadline. Changes are computed from stored version history, and

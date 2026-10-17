@@ -33,6 +33,7 @@ import {
 } from "@radar/store";
 import pg from "pg";
 import { AnthropicReviewer } from "./anthropic-reviewer.js";
+import { AnthropicSummarizer } from "./anthropic-summarizer.js";
 import { ResendMailer, digestSubject, parseRecipients, recipientsFor, type Mailer } from "./mailer.js";
 import { recentSignals } from "./signals.js";
 
@@ -312,6 +313,10 @@ async function main() {
           ? new ResendMailer(process.env.RESEND_API_KEY, process.env.RADAR_EMAIL_FROM)
           : null;
       const recipientOverrides = parseRecipients(process.env.RADAR_RECIPIENTS);
+      const summarizer =
+        process.env.ANTHROPIC_API_KEY && process.env.RADAR_SUMMARY !== "off"
+          ? new AnthropicSummarizer(process.env.ANTHROPIC_API_KEY)
+          : null;
       const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1000 });
       const unsubscribe = `mailto:${process.env.RADAR_UNSUBSCRIBE_EMAIL ?? "radar-unsubscribe@rfppilot.com"}?subject=unsubscribe`;
       // One FEMA lookup per (states, since) per run, shared across profiles.
@@ -338,6 +343,13 @@ async function main() {
           d.signals = await signalsFor(p.states, signalsSince).catch((err: Error) => {
             log({ event: "signals_failed", profile: p.id, error: err.message });
             return [];
+          });
+        }
+        if (summarizer) {
+          // The brief is a bonus too: on any failure the email goes out without it.
+          d.summary = await summarizer.summarize(d).catch((err: Error) => {
+            log({ event: "summary_failed", profile: p.id, error: err.message });
+            return null;
           });
         }
         const stem = `${dir}/${p.tenantId}-${p.id}-${now.slice(0, 10)}`;

@@ -36,6 +36,8 @@ export interface Digest {
   profileName: string;
   generatedAt: string;
   glance?: DigestGlance;
+  /** "Today in brief": two or three AI-written sentences drawn only from this digest's own facts. */
+  summary?: string | null;
   /** The profile's band cutoffs, so each card can say how far it sits from Strong. Defaults apply if omitted. */
   bands?: { strong: number; possible: number };
   /** Solicitations already shown before that changed since the last digest. */
@@ -107,6 +109,7 @@ function glanceLine(g: DigestGlance): string {
 /** Plain text suitable for SMS or a chat message. Short lines, no markup. */
 export function renderDigestText(d: Digest, maxPerSection = 5): string {
   const lines: string[] = [`RFP Pilot Radar for ${d.profileName}, ${fmtDate(d.generatedAt)}`];
+  if (d.summary) lines.push(d.summary);
   if (d.glance) lines.push(glanceLine(d.glance));
   const section = (title: string, rows: DigestEntry[]) => {
     if (rows.length === 0) return;
@@ -144,6 +147,7 @@ export function renderDigestText(d: Digest, maxPerSection = 5): string {
 /** Markdown for email or a chat client. Each entry links to the public source page and shows why it matched. */
 export function renderDigestMarkdown(d: Digest): string {
   const out: string[] = [`# Radar: ${d.profileName}`, `_${fmtDate(d.generatedAt)}_`, ""];
+  if (d.summary) out.push(`**Today in brief:** ${d.summary}`, "");
   if (d.glance) out.push(`**At a glance:** ${glanceLine(d.glance)}`, "");
   const entry = ({ opportunity: o, match: m }: DigestEntry) => {
     const x = explain(m, d.bands ?? BANDS);
@@ -260,6 +264,12 @@ export function renderDigestHtml(d: Digest): string {
       `<div style="font-size:18px;font-weight:700;margin-top:2px">${esc(d.profileName)}</div>` +
       `<div style="font-size:12px;color:#D3E6F6">${esc(fmtDate(d.generatedAt))}</div></div>`,
   ];
+  if (d.summary)
+    parts.push(
+      `<div style="${font};margin-top:12px;padding:12px 14px;border-radius:10px;background:#F4F9FD;border-left:4px solid #1795C3">` +
+        `<div style="font-size:11px;letter-spacing:1.2px;font-weight:700;color:#0E2F6C">TODAY IN BRIEF</div>` +
+        `<div style="font-size:14px;line-height:1.5;margin-top:4px;color:#1B2433">${esc(d.summary)}</div></div>`,
+    );
   if (d.glance) parts.push(glanceHtml(d, font));
   if (d.changed?.length)
     parts.push(h2(`Changed since last email (${d.changed.length})`), changedCards(d.changed));
