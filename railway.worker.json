@@ -1,9 +1,0 @@
-{
-  "$schema": "https://railway.com/railway.schema.json",
-  "build": { "builder": "DOCKERFILE", "dockerfilePath": "Dockerfile" },
-  "deploy": {
-    "startCommand": "node apps/worker/dist/cli.js daily --profiles profiles/isf.example.json",
-    "cronSchedule": "45 10 * * 1-5",
-    "restartPolicyType": "NEVER"
-  }
-}

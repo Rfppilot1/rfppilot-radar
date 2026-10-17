@@ -5,15 +5,21 @@ build from this repository.
 
 ## 1. Create the project
 
-1. railway.com → New Project → Deploy from GitHub repo → `Rfppilot1/rfppilot-radar`. This creates the **api**
-   service using `railway.json` (Dockerfile build, `/healthz` health check).
-2. In the project: New → Database → **PostgreSQL**.
-3. The **worker** service builds from the same repository. In its Settings → **Config-as-code**, set the Railway
-   config file path to `/railway.worker.json`. That file sets the start command
-   (`node apps/worker/dist/cli.js daily --profiles profiles/isf.example.json`), the cron schedule
-   (`45 10 * * 1-5`: 6:45 AM Eastern in daylight time, 5:45 AM in standard time; Railway cron is UTC) and no
-   restarts. Without it the worker inherits `railway.json` and starts the API instead.
-   The worker reloads the profile from the repository on every run, so a profile change ships with a commit.
+Railway no longer accepts config files for new services, so each service is configured in its Settings.
+
+1. railway.com → New Project → GitHub Repository → `Rfppilot1/rfppilot-radar`. Railway proposes one service per
+   app; keep **@radar/api** and **@radar/worker** and discard **@radar/mcp** (the MCP server runs on the
+   customer's machine).
+2. Add → Database → **PostgreSQL**.
+3. Both services, Settings → Build: **Builder: Dockerfile** (`/Dockerfile`), no custom build command, no watch
+   paths (a change in any package must redeploy both).
+4. **@radar/api**, Settings → Deploy: start command `node apps/api/dist/server.js`, healthcheck path `/healthz`.
+   Networking → Generate Domain.
+5. **@radar/worker**, Settings → Deploy: start command
+   `node apps/worker/dist/cli.js daily --profiles profiles/isf.example.json`, restart policy **Never**, cron
+   schedule `45 10 * * 1-5` (6:45 AM Eastern in daylight time, 5:45 AM in standard time; Railway cron is UTC).
+   For a first test, deploy before adding the schedule: the worker then runs once immediately. The worker
+   reloads the profile from the repository on every run, so a profile change ships with a commit.
 
 ## 2. Variables
 

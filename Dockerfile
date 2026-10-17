@@ -1,10 +1,15 @@
-# One image for both processes. Railway runs the API from railway.json; the worker service overrides the
-# start command and runs on a cron schedule (see docs/DEPLOY_RAILWAY.md).
+# One image for both processes. Each Railway service sets its own start command (see docs/DEPLOY_RAILWAY.md).
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
+# CI=true lets pnpm reinstall without a TTY.
+ENV CI=true
 RUN corepack enable
 COPY . .
-RUN pnpm install --frozen-lockfile && pnpm build && pnpm prune --prod
+# Build with dev dependencies, then reinstall production dependencies only. (`pnpm prune --prod` drops the
+# workspace links between packages, so the runtime could not import @radar/*.)
+RUN pnpm install --frozen-lockfile && pnpm build \
+  && rm -rf node_modules apps/*/node_modules packages/*/node_modules \
+  && pnpm install --frozen-lockfile --prod
 
 FROM node:22-bookworm-slim
 WORKDIR /app
