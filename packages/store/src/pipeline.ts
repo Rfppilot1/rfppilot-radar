@@ -146,7 +146,7 @@ export async function buildDigest(
   const profile = await repo.getProfile(tenantId, profileId);
   if (!profile) throw new Error("Profile not found");
   const matches = await repo.listMatches(tenantId, profileId, {
-    bands: ["strong", "possible", "weak"],
+    bands: ["strong", "possible", "weak", "excluded"],
     activeAt: o.now,
     limit: 5000,
   });
@@ -165,9 +165,28 @@ export async function buildDigest(
   const notPassed = (id: string) => decided.get(id)?.decision !== "pass";
   const window = o.closingWithinDays ?? 7;
 
+  // At-a-glance: every open, biddable notice Radar read for this profile, by fit band and by source.
+  const open = matches.filter((m) => {
+    const opp = opps.get(m.opportunityId);
+    return opp && m.lane === "bid" && notPassed(opp.id) && (opp.dueAt === null || opp.dueAt >= o.now);
+  });
+  const bySource: Record<string, number> = {};
+  for (const m of open) {
+    const src = opps.get(m.opportunityId)!.source;
+    bySource[src] = (bySource[src] ?? 0) + 1;
+  }
+  const glance = {
+    screened: open.length,
+    strong: open.filter((m) => m.band === "strong").length,
+    possible: open.filter((m) => m.band === "possible").length,
+    notFit: open.filter((m) => m.band === "weak" || m.band === "excluded").length,
+    bySource,
+  };
+
   return {
     profileName: profile.name,
     generatedAt: o.now,
+    glance,
     newMatches: entries(
       (e) =>
         e.match.lane === "bid" && good(e.match.band) && isNew(e.firstGood) && notPassed(e.opportunity.id),

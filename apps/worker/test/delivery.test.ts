@@ -70,6 +70,51 @@ describe("email delivery", () => {
   });
 });
 
+it("leads with an at-a-glance panel and colors scores by fit band", () => {
+  const o = (id: string, title: string, dueAt: string | null) =>
+    ({
+      id,
+      source: "fl-mfmp",
+      title,
+      buyer: { name: "DMS", id: null, level: "state" },
+      kind: "rfp",
+      kindLabel: null,
+      dueAt,
+      provenance: { sourceUrl: `https://example.gov/${id}` },
+    }) as unknown as Opportunity;
+  const strong = {
+    opportunity: o("a", "Strategy study", null),
+    match: { score: 72, reasons: [], band: "strong" } as never,
+  };
+  const maybe = {
+    opportunity: o("b", "Audit support", "2026-10-18T20:00:00.000Z"),
+    match: { score: 41, reasons: [], band: "possible" } as never,
+  };
+  const d: Digest = {
+    profileName: "ISF",
+    generatedAt: NOW,
+    glance: {
+      screened: 634,
+      strong: 3,
+      possible: 19,
+      notFit: 612,
+      bySource: { "tx-esbd": 477, "fl-mfmp": 157 },
+    },
+    newMatches: [strong, maybe],
+    closingSoon: [maybe],
+    intel: [],
+    secondLook: [],
+  };
+  const html = renderDigestHtml(d);
+  expect(html.indexOf("AT A GLANCE")).toBeLessThan(html.indexOf("New matches"));
+  expect(html).toContain("634 open solicitations");
+  expect(html).toContain("Texas 477 · Florida 157");
+  expect(html).toContain("Top match:");
+  expect(html).toContain("Next deadline:");
+  expect(html).toMatch(/background:#1E8E3E;color:#FFFFFF;[^>]*>72</);
+  expect(html).toMatch(/background:#F2B705;color:#3A2C00;[^>]*>41</);
+});
+
 describe("FEMA signals", () => {
   it("keeps only Public Assistance declarations and describes them", () => {
     const rows = JSON.parse(

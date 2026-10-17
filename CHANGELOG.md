@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 (2026-10-17)
+
+- Digest email opens with an "At a glance" panel: open solicitations read (by source), green/amber/red tiles for
+  strong, possible and screened out, a proportion bar, new and closing counts, the top match and the next deadline.
+- Score pills and card edges are colored by fit band (green strong, amber possible).
+- SAM.gov "404 No Data found" is treated as an empty result; HTTP error bodies are logged; the Claude reviewer has
+  more output headroom and reports what it got back when it cannot parse a verdict.
+
 ## 0.3.0 (2026-10-17)
 
 - Per-profile scoring: a profile's optional `scoring` block overrides point values (`weights`), band cutoffs
