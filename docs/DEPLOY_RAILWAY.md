@@ -8,11 +8,12 @@ build from this repository.
 1. railway.com → New Project → Deploy from GitHub repo → `Rfppilot1/rfppilot-radar`. This creates the **api**
    service using `railway.json` (Dockerfile build, `/healthz` health check).
 2. In the project: New → Database → **PostgreSQL**.
-3. New → GitHub Repo → the same repository again. Rename it **worker**. In its Settings:
-   - Custom Start Command: `node apps/worker/dist/cli.js daily --profiles profiles/isf.example.json`
-     (reloads the profile from the repository on every run, so a profile change ships with a commit)
-   - Cron Schedule: `45 10 * * 1-5` (6:45 AM Eastern on weekdays during daylight time; Railway cron is UTC)
-   - Remove the health check (a cron job exits when done).
+3. The **worker** service builds from the same repository. In its Settings → **Config-as-code**, set the Railway
+   config file path to `/railway.worker.json`. That file sets the start command
+   (`node apps/worker/dist/cli.js daily --profiles profiles/isf.example.json`), the cron schedule
+   (`45 10 * * 1-5`: 6:45 AM Eastern in daylight time, 5:45 AM in standard time; Railway cron is UTC) and no
+   restarts. Without it the worker inherits `railway.json` and starts the API instead.
+   The worker reloads the profile from the repository on every run, so a profile change ships with a commit.
 
 ## 2. Variables
 
