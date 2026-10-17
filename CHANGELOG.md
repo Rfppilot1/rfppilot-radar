@@ -4,7 +4,9 @@
 
 - Digest email opens with an "At a glance" panel: open solicitations read (by source), green/amber/red tiles for
   strong, possible and screened out, a proportion bar, new and closing counts, the top match and the next deadline.
-- Score pills and card edges are colored by fit band (green strong, amber possible).
+- Score pills and card edges are colored by fit band (green strong, amber possible), and every card explains its
+  score: a headline ("Strong fit, 74 of 100"), how far it sits from Strong, and the signed points behind it, largest
+  first, with the AI reviewer's one-sentence rationale in plain words.
 - SAM.gov 404 (documented as "No Data found", often with an empty body) is treated as an empty result; HTTP error bodies are logged; the Claude reviewer has
   more output headroom and reports what it got back when it cannot parse a verdict.
 

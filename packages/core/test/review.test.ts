@@ -97,7 +97,7 @@ describe("digest and handoff", () => {
   it("renders markdown that links to the public source page and explains the match", () => {
     const md = renderDigestMarkdown(digest);
     expect(md).toContain(`](${o.provenance.sourceUrl})`);
-    expect(md).toContain("Why:");
+    expect(md).toMatch(/fit, \d+ of 100/);
   });
 
   it("builds a valid RFP Pilot handoff that keeps original document names", () => {

@@ -187,6 +187,7 @@ export async function buildDigest(
     profileName: profile.name,
     generatedAt: o.now,
     glance,
+    bands: resolveScoring(profile).bands,
     newMatches: entries(
       (e) =>
         e.match.lane === "bid" && good(e.match.band) && isNew(e.firstGood) && notPassed(e.opportunity.id),

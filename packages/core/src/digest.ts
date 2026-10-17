@@ -1,5 +1,6 @@
 import type { SecondLookItem } from "./review.js";
-import type { Match, Opportunity } from "./schema.js";
+import type { Match, Opportunity, Reason } from "./schema.js";
+import { BANDS } from "./scoring.js";
 
 export interface DigestEntry {
   opportunity: Opportunity;
@@ -28,6 +29,8 @@ export interface Digest {
   profileName: string;
   generatedAt: string;
   glance?: DigestGlance;
+  /** The profile's band cutoffs, so each card can say how far it sits from Strong. Defaults apply if omitted. */
+  bands?: { strong: number; possible: number };
   newMatches: DigestEntry[];
   closingSoon: DigestEntry[];
   intel: DigestEntry[];
@@ -73,9 +76,9 @@ const SOURCE_LABEL: Record<Opportunity["source"], string> = {
 
 /** Fit colors shared by the glance panel and the score pills: green strong, amber possible, red below the bar. */
 export const FIT_COLORS = {
-  strong: { bg: "#1E8E3E", fg: "#FFFFFF", label: "Strong fit" },
-  possible: { bg: "#F2B705", fg: "#3A2C00", label: "Possible fit" },
-  notFit: { bg: "#D93025", fg: "#FFFFFF", label: "Screened out" },
+  strong: { bg: "#1E8E3E", fg: "#FFFFFF", label: "Strong fit", short: "Strong", tint: "#E6F4EA" },
+  possible: { bg: "#F2B705", fg: "#3A2C00", label: "Possible fit", short: "Possible", tint: "#FEF7E0" },
+  notFit: { bg: "#D93025", fg: "#FFFFFF", label: "Screened out", short: "Low", tint: "#FCE8E6" },
 } as const;
 
 const plural = (n: number, one: string, many = `${one}s`) =>
@@ -126,14 +129,12 @@ export function renderDigestMarkdown(d: Digest): string {
   const out: string[] = [`# Radar: ${d.profileName}`, `_${fmtDate(d.generatedAt)}_`, ""];
   if (d.glance) out.push(`**At a glance:** ${glanceLine(d.glance)}`, "");
   const entry = ({ opportunity: o, match: m }: DigestEntry) => {
-    const why = m.reasons
-      .filter((r) => r.points > 0)
-      .map((r) => r.detail)
-      .join("; ");
+    const x = explain(m, d.bands ?? BANDS);
     return [
       `**[${o.title}](${o.provenance.sourceUrl})**`,
-      `${SOURCE_LABEL[o.source]} · ${o.buyer.name} · ${kindText(o)} · due ${fmtDate(o.dueAt, d.generatedAt)} · fit **${Math.round(m.score)}** (${m.band})`,
-      why ? `Why: ${why}` : "",
+      `${SOURCE_LABEL[o.source]} · ${o.buyer.name} · ${kindText(o)} · due ${fmtDate(o.dueAt, d.generatedAt)}`,
+      `**${x.headline}.** ${x.gap}`,
+      ...x.rows.map((r) => `- ${r.sign}${r.points} ${r.label}: ${r.text}`),
       "",
     ].filter(Boolean);
   };
@@ -170,7 +171,7 @@ export function renderDigestHtml(d: Digest): string {
     title: string,
     url: string,
     meta: string,
-    why: string,
+    whyHtml: string,
     score?: number,
     band?: Match["band"],
   ) => {
@@ -180,11 +181,11 @@ export function renderDigestHtml(d: Digest): string {
     return (
       `<div style="${font};border:1px solid #D3E1EC;${edge}border-radius:8px;padding:10px 12px;margin:0 0 8px">` +
       (score !== undefined
-        ? `<span title="${esc(c.label)}" style="float:right;background:${c.bg};color:${c.fg};border-radius:10px;padding:1px 8px;font-size:12px;font-weight:700">${score}</span>`
+        ? `<span title="${esc(c.label)}" style="float:right;background:${c.bg};color:${c.fg};border-radius:10px;padding:1px 8px;font-size:12px;font-weight:700">${score} · ${esc(c.short)}</span>`
         : "") +
       `<a href="${safeUrl(url)}" style="color:#0E2F6C;font-weight:600;font-size:14px;text-decoration:none">${esc(title)}</a>` +
       `<div style="color:#556175;font-size:12px;margin-top:3px">${esc(meta)}</div>` +
-      (why ? `<div style="font-size:12px;margin-top:5px;color:#1B2433">${esc(why)}</div>` : "") +
+      (whyHtml ? `<div style="font-size:12px;margin-top:6px;color:#1B2433">${whyHtml}</div>` : "") +
       `</div>`
     );
   };
@@ -195,10 +196,7 @@ export function renderDigestHtml(d: Digest): string {
           o.title,
           o.provenance.sourceUrl,
           `${SOURCE_LABEL[o.source]} · ${o.buyer.name} · ${kindText(o)} · due ${fmtDate(o.dueAt, d.generatedAt)}`,
-          m.reasons
-            .filter((r) => r.points > 0)
-            .map((r) => r.detail)
-            .join("; "),
+          explainHtml(m, d.bands ?? BANDS),
           Math.round(m.score),
           m.band,
         ),
@@ -278,5 +276,93 @@ function glanceHtml(d: Digest, font: string): string {
     (top ? line("Top match:", top, `fit ${Math.round(top.match.score)}`) : "") +
     (next ? line("Next deadline:", next, `due ${fmtDate(next.opportunity.dueAt, d.generatedAt)}`) : "") +
     `</div>`
+  );
+}
+
+const FACTOR_LABEL: Record<Reason["factor"], string> = {
+  code: "Category code",
+  capability: "Capability match",
+  semantic: "AI review",
+  exclusion: "Excluded term",
+  buyer: "Known buyer",
+  kind: "Notice type",
+  timing: "Timing",
+  geography: "Location",
+  status: "Status",
+};
+
+interface ExplainRow {
+  sign: "+" | "−";
+  points: number;
+  label: string;
+  text: string;
+}
+
+/**
+ * Plain-English account of a score: a headline ("Strong fit, 74 of 100"), how far it sits from the next band,
+ * and the signed points behind it, largest first. Uses only the recorded reasons, so it can never disagree
+ * with the score.
+ */
+export function explain(
+  m: Pick<Match, "score" | "band" | "reasons" | "review">,
+  bands: { strong: number; possible: number },
+): { headline: string; gap: string; rows: ExplainRow[] } {
+  const score = Math.round(m.score);
+  const name = m.band === "strong" ? "Strong fit" : m.band === "possible" ? "Possible fit" : "Low fit";
+  const gap =
+    m.band === "strong"
+      ? `Strong starts at ${bands.strong}.`
+      : m.band === "possible"
+        ? `${Math.max(1, Math.ceil(bands.strong - m.score))} points short of Strong (${bands.strong}).`
+        : `Possible starts at ${bands.possible}.`;
+  const rows = m.reasons
+    .filter((r) => Math.round(r.points) !== 0)
+    .sort((a, b) => Math.sign(b.points) - Math.sign(a.points) || Math.abs(b.points) - Math.abs(a.points))
+    .map((r) => ({
+      sign: (r.points > 0 ? "+" : "−") as ExplainRow["sign"],
+      points: Math.abs(Math.round(r.points)),
+      label: FACTOR_LABEL[r.factor],
+      text: reasonText(r, m.review),
+    }));
+  const total = Math.round(m.reasons.reduce((t, r) => t + r.points, 0));
+  const capped = total > 100 ? ` Points total ${total}; the score caps at 100.` : "";
+  return { headline: `${name}, ${score} of 100`, gap: gap + capped, rows };
+}
+
+function reasonText(r: Reason, review: Match["review"] | undefined): string {
+  if (r.factor === "semantic") {
+    if (review?.rationale)
+      return `${review.verdict === "fit" ? "Fit" : review.verdict === "maybe" ? "Maybe" : "Not a fit"}. ${review.rationale}`;
+    const m = /review \((\w+)\): ([\s\S]*)$/.exec(r.detail);
+    if (m) return `${m[1]![0]!.toUpperCase()}${m[1]!.slice(1)}. ${m[2]}`;
+  }
+  // Drop the "Matches capabilities:" style prefix; the label already says it.
+  return r.detail.replace(
+    /^(Classification matches profile|Matches capabilities|Past or current buyer|Notice type|Contains excluded term\(s\)): /,
+    "",
+  );
+}
+
+function explainHtml(m: Match, bands: { strong: number; possible: number }): string {
+  const x = explain(m, bands);
+  const c =
+    m.band === "strong" ? FIT_COLORS.strong : m.band === "possible" ? FIT_COLORS.possible : FIT_COLORS.notFit;
+  const head =
+    `<div style="background:${c.tint};border-radius:6px;padding:5px 8px;margin-bottom:4px">` +
+    `<b style="color:#1B2433">${esc(x.headline)}.</b> <span style="color:#556175">${esc(x.gap)}</span></div>`;
+  const rows = x.rows
+    .map((r) => {
+      const pos = r.sign === "+";
+      return (
+        `<tr><td valign="top" style="width:38px;padding:2px 6px 2px 0;white-space:nowrap;font-weight:700;color:${pos ? "#1E8E3E" : "#D93025"}">${r.sign}${r.points}</td>` +
+        `<td valign="top" style="padding:2px 0"><span style="color:#556175">${esc(r.label)}:</span> ${esc(r.text)}</td></tr>`
+      );
+    })
+    .join("");
+  return (
+    head +
+    (rows
+      ? `<table role="presentation" cellpadding="0" cellspacing="0" style="font-size:12px;width:100%">${rows}</table>`
+      : "")
   );
 }

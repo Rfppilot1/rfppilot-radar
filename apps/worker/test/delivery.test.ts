@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { groupDeclarations } from "@radar/connectors";
-import { renderDigestHtml, type Digest, type Opportunity } from "@radar/core";
+import { explain, renderDigestHtml, type Digest, type Opportunity } from "@radar/core";
 import { describe, expect, it } from "vitest";
 import { ResendMailer, digestSubject } from "../src/mailer.js";
 import { toDigestSignals } from "../src/signals.js";
@@ -111,8 +111,40 @@ it("leads with an at-a-glance panel and colors scores by fit band", () => {
   expect(html).toContain("Texas 477 · Florida 157");
   expect(html).toContain("Top match:");
   expect(html).toContain("Next deadline:");
-  expect(html).toMatch(/background:#1E8E3E;color:#FFFFFF;[^>]*>72</);
-  expect(html).toMatch(/background:#F2B705;color:#3A2C00;[^>]*>41</);
+  expect(html).toMatch(/background:#1E8E3E;color:#FFFFFF;[^>]*>72 · Strong</);
+  expect(html).toMatch(/background:#F2B705;color:#3A2C00;[^>]*>41 · Possible</);
+  expect(html).toContain("14 points short of Strong (55)");
+});
+
+describe("score explanation", () => {
+  it("lists signed points, largest first, with the AI rationale in plain words", () => {
+    const x = explain(
+      {
+        score: 74,
+        band: "strong",
+        review: null,
+        reasons: [
+          { factor: "kind", points: 5, detail: "Notice type: RFP" },
+          { factor: "capability", points: 24, detail: 'Matches capabilities: "strategic planning" (title)' },
+          { factor: "exclusion", points: -10, detail: 'Contains excluded term(s): "staffing"' },
+          {
+            factor: "semantic",
+            points: 15,
+            detail: "Claude (claude-haiku-5-5) review (fit): Core strategy work.",
+          },
+          { factor: "timing", points: 0, detail: "ok" },
+        ],
+      },
+      { strong: 55, possible: 30 },
+    );
+    expect(x.headline).toBe("Strong fit, 74 of 100");
+    expect(x.rows.map((r) => `${r.sign}${r.points} ${r.label}: ${r.text}`)).toEqual([
+      '+24 Capability match: "strategic planning" (title)',
+      "+15 AI review: Fit. Core strategy work.",
+      "+5 Notice type: RFP",
+      '−10 Excluded term: "staffing"',
+    ]);
+  });
 });
 
 describe("FEMA signals", () => {
