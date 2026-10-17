@@ -157,21 +157,22 @@ describe("SAM.gov", () => {
     expect(ss.provenance.sourceUrl).toBe("https://sam.gov/opp/eeee5555ffff6666aaaa7777bbbb8888/view");
   });
 
-  it("treats SAM's 404 No Data found as an empty result, but surfaces other 404s", async () => {
-    const mk = (body: string) =>
+  it("treats SAM's documented 404 No Data found as an empty result, but surfaces other errors", async () => {
+    const mk = (body: string, status = 404) =>
       new SamGovConnector({
         http: new HttpClient({
           userAgent: "t",
           minIntervalMs: 0,
           maxRetries: 0,
-          fetchImpl: (async () => new Response(body, { status: 404 })) as unknown as typeof fetch,
+          fetchImpl: (async () => new Response(body, { status })) as unknown as typeof fetch,
         }),
         apiKey: "k",
         states: ["FL"],
       });
     const run = await mk('{"error":{"code":"404","message":"No Data found"}}').fetch();
     expect(run.opportunities).toHaveLength(0);
-    await expect(mk("Not Found").fetch()).rejects.toThrow(/HTTP 404/);
+    expect((await mk("").fetch()).opportunities).toHaveLength(0);
+    await expect(mk('{"error":{"code":"API_KEY_INVALID"}}', 403).fetch()).rejects.toThrow(/HTTP 403/);
   });
 
   it("requires an API key and queries each state with the documented parameters", async () => {

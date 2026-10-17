@@ -186,8 +186,9 @@ export class SamGovConnector implements SourceConnector {
           try {
             res = await this.opts.http.json(`${SAM_SEARCH}?${q}`);
           } catch (err) {
-            // SAM answers an empty result with 404 "No Data found" rather than an empty list.
-            if (err instanceof HttpError && err.status === 404 && /no data/i.test(err.body)) break;
+            // SAM documents 404 as "No Data found" (often with an empty body) rather than an empty list.
+            // A bad key is 403 and a malformed query 400, so those still fail the run.
+            if (err instanceof HttpError && err.status === 404) break;
             throw err;
           }
           const rows = res.opportunitiesData ?? [];
