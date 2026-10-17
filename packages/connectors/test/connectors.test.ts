@@ -498,3 +498,14 @@ describe("Florida review fixes", () => {
     expect(run.partialIds).toEqual(["fl-mfmp:16313"]);
   });
 });
+
+describe("Florida content hash", () => {
+  it("ignores the live countdown and per-viewer flags in the detail, but not real changes", () => {
+    const [itn] = fx("fl-mfmp.synthetic.json");
+    const detail = fx("fl-mfmp-detail.2026-10-15.verbatim.json");
+    const h = (d: object) => normalizeFlAd(itn, AT, d).provenance.contentHash;
+    const base = h({ ...detail, timeRemaining: "44 days 1 hour", favorite: false });
+    expect(h({ ...detail, timeRemaining: "44 days 0 hours", favorite: true, editable: false })).toBe(base);
+    expect(h({ ...detail, description: "Revised scope", timeRemaining: "1 day" })).not.toBe(base);
+  });
+});

@@ -5,6 +5,10 @@
 - Per-profile scoring: a profile's optional `scoring` block overrides point values (`weights`), band cutoffs
   (`bands`) and notice-type points (`kindPoints`); anything omitted uses the defaults. Second look and the Claude
   reviewer use the profile's cutoffs.
+- Florida: the live `timeRemaining` countdown and per-viewer flags no longer count as content changes (they made
+  every record look updated on every run).
+- Worker: digest file writes can no longer stop a run or the email; the container has a writable `/app/data`;
+  Florida progress lines, synchronous logging and signal traces.
 - Worker skips SAM.gov with a log line when no key is set, instead of failing the run.
 - Container build reinstalls production dependencies (fixes missing workspace links); Railway is configured in
   the dashboard (see `docs/DEPLOY_RAILWAY.md`).

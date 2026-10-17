@@ -274,7 +274,9 @@ async function main() {
       if (values.sources !== "none") await ingest(repo, sources, max);
       await scoreAll(repo);
       const dir = values["out-dir"] ?? "data/digests";
-      await mkdir(dir, { recursive: true });
+      await mkdir(dir, { recursive: true }).catch((err: Error) =>
+        log({ event: "digest_files_failed", error: err.message }),
+      );
       const now = new Date().toISOString();
       const mailer: Mailer | null =
         process.env.RESEND_API_KEY && process.env.RADAR_EMAIL_FROM
@@ -307,9 +309,14 @@ async function main() {
         const stem = `${dir}/${p.tenantId}-${p.id}-${now.slice(0, 10)}`;
         const html = renderDigestHtml(d);
         const text = renderDigestText(d);
-        await writeFile(`${stem}.md`, renderDigestMarkdown(d));
-        await writeFile(`${stem}.txt`, text);
-        await writeFile(`${stem}.html`, html);
+        // Local copies are a convenience; a disk problem must never stop the email.
+        try {
+          await writeFile(`${stem}.md`, renderDigestMarkdown(d));
+          await writeFile(`${stem}.txt`, text);
+          await writeFile(`${stem}.html`, html);
+        } catch (err) {
+          log({ event: "digest_files_failed", profile: p.id, error: (err as Error).message });
+        }
         let emailed = false;
         const to = recipientsFor(recipientOverrides, p.tenantId, p.id, p.delivery.email);
         if (mailer && to.length > 0) {

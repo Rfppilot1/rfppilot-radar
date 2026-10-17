@@ -15,6 +15,8 @@ FROM node:22-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app /app
+# The worker writes digest files under /app/data; the app itself stays read-only to the runtime user.
+RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 8080
 CMD ["node", "apps/api/dist/server.js"]

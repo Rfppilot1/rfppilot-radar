@@ -116,9 +116,27 @@ const AWARD_BOILERPLATE = /protest|procedure|instruction|template|sample|form/i;
 const ONE_DAY_MS = 86_400_000;
 
 /** Drops the per-user "favorite" flag so it never registers as a content change. */
-function hashable(raw: unknown): unknown {
-  const { favorite: _favorite, ...rest } = (raw ?? {}) as Record<string, unknown>;
-  return rest;
+/**
+ * Fields that change without the notice changing: a live countdown (`timeRemaining`) and per-viewer flags. They
+ * are left out of the content hash, so a record only counts as updated when the notice itself changes.
+ */
+const VOLATILE_FIELDS = new Set([
+  "favorite",
+  "timeRemaining",
+  "intendToParticipate",
+  "editable",
+  "deletable",
+  "vendorViewer",
+  "canAdvertisementNotification",
+  "canAdvertisementAuditLog",
+  "submitted",
+  "needVersionUpdate",
+]);
+
+export function hashable(raw: unknown): unknown {
+  return Object.fromEntries(
+    Object.entries((raw ?? {}) as Record<string, unknown>).filter(([k]) => !VOLATILE_FIELDS.has(k)),
+  );
 }
 
 export function htmlToText(html: string | null | undefined): string | null {
