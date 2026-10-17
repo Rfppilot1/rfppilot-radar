@@ -23,7 +23,7 @@ export class MemoryRepository implements Repository {
   private matches = new Map<string, StoredMatch & { tenantId: string }>();
   private decisions = new Map<string, StoredDecision & { tenantId: string }>();
   private digests = new Map<string, string>();
-  readonly versions: { opportunityId: string; contentHash: string; seenAt: string }[] = [];
+  readonly versions: { opportunityId: string; contentHash: string; seenAt: string; data: Opportunity }[] = [];
   readonly runs: IngestRunRecord[] = [];
 
   async upsertOpportunities(opps: Opportunity[], seenAt: string): Promise<UpsertResult> {
@@ -45,7 +45,7 @@ export class MemoryRepository implements Repository {
         r.unchanged++;
         continue;
       }
-      this.versions.push({ opportunityId: o.id, contentHash: o.provenance.contentHash, seenAt });
+      this.versions.push({ opportunityId: o.id, contentHash: o.provenance.contentHash, seenAt, data: o });
     }
     return r;
   }
@@ -61,6 +61,12 @@ export class MemoryRepository implements Repository {
     for (const v of missing) {
       v.opp = { ...v.opp, status: "closed" };
       result.closed.push(v.opp.id);
+      this.versions.push({
+        opportunityId: v.opp.id,
+        contentHash: v.opp.provenance.contentHash,
+        seenAt: seenSince,
+        data: v.opp,
+      });
     }
     return result;
   }
@@ -70,6 +76,18 @@ export class MemoryRepository implements Repository {
       const v = this.opps.get(id);
       if (v && v.lastSeen < seenAt) v.lastSeen = seenAt;
     }
+  }
+
+  async changedSince(since: string) {
+    return [...new Set(this.versions.filter((v) => v.seenAt >= since).map((v) => v.opportunityId))];
+  }
+
+  async versionsBefore(ids: string[], before: string) {
+    const want = new Set(ids);
+    const m = new Map<string, Opportunity>();
+    for (const v of this.versions)
+      if (want.has(v.opportunityId) && v.seenAt < before) m.set(v.opportunityId, v.data);
+    return m;
   }
 
   async getOpportunity(id: string) {

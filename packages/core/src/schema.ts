@@ -91,6 +91,27 @@ export const DocumentRef = z.object({
 });
 export type DocumentRef = z.infer<typeof DocumentRef>;
 
+/**
+ * A dated event in a solicitation other than the response deadline, taken from the posting's own text.
+ * Dates are kept as the agency wrote them (local calendar date and clock time), not converted, so nothing
+ * shifts across time zones.
+ */
+export const KeyDate = z.object({
+  kind: z.enum(["pre_bid", "site_visit", "questions_due", "bid_opening"]),
+  /** Local calendar date, YYYY-MM-DD; null when the posting mentions the event without a date. */
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable(),
+  /** Local clock time as written ("10:00 AM"), when stated. */
+  time: z.string().nullable(),
+  /** True or false only when the posting says so ("mandatory", "non-mandatory"). */
+  mandatory: z.boolean().nullable(),
+  /** The sentence the date came from, verbatim and trimmed, so a reader can check it. */
+  note: z.string().max(300),
+});
+export type KeyDate = z.infer<typeof KeyDate>;
+
 export const Opportunity = z.object({
   /** Stable Radar id: `${source}:${sourceRecordId}`. */
   id: z.string().min(3),
@@ -122,6 +143,8 @@ export const Opportunity = z.object({
   /** Source version counter or addendum indicator, when the source exposes it. */
   version: z.number().int().nullable(),
   hasAddendum: z.boolean(),
+  /** Pre-bid conferences, site visits, question deadlines and bid openings found in the posting. */
+  keyDates: z.array(KeyDate).default([]),
   provenance: Provenance,
 });
 export type Opportunity = z.infer<typeof Opportunity>;

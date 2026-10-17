@@ -41,6 +41,7 @@ const opp: Opportunity = {
   ],
   version: 2,
   hasAddendum: true,
+  keyDates: [],
   provenance: {
     source: "fl-mfmp",
     sourceUrl: "https://vendor.myfloridamarketplace.com/search/bids/detail/990001",

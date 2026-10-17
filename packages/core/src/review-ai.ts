@@ -92,7 +92,7 @@ export function reviewPrompt(opp: Opportunity, profile: FirmProfile): string {
     `</notice>`,
     ``,
     `Judge only from the notice and the firm details above. Do not assume facts about the firm that are not listed.`,
-    `Answer with JSON only: {"verdict":"fit"|"maybe"|"no","rationale":"one sentence"}`,
+    `Answer with JSON only: {"verdict":"fit"|"maybe"|"no","rationale":"one plain sentence, under 200 characters"}`,
   ].join("\n");
 }
 
@@ -104,9 +104,7 @@ export function parseVerdict(text: string, reviewer: string): ReviewVerdict {
     throw new Error(`Invalid verdict "${j.verdict}"`);
   return {
     verdict: j.verdict,
-    rationale: String(j.rationale ?? "")
-      .trim()
-      .slice(0, 300),
+    rationale: clipSentence(String(j.rationale ?? "").trim(), 300),
     reviewer,
   };
 }
@@ -117,4 +115,13 @@ function clip(s: string, n: number): string {
     .replace(/\s+/g, " ")
     .trim();
   return t.length > n ? `${t.slice(0, n)}…` : t;
+}
+
+/** Shortens text to at most `n` characters, ending at a sentence or clause boundary rather than mid-word. */
+export function clipSentence(t: string, n: number): string {
+  if (t.length <= n) return t;
+  const cut = t.slice(0, n);
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("; "), cut.lastIndexOf(", "));
+  const body = end > n * 0.5 ? cut.slice(0, end) : cut.slice(0, cut.lastIndexOf(" "));
+  return `${body.replace(/[;,]$/, "")}.`;
 }

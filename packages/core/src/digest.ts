@@ -1,10 +1,17 @@
 import type { SecondLookItem } from "./review.js";
 import type { Match, Opportunity, Reason } from "./schema.js";
 import { BANDS } from "./scoring.js";
+import { changeLine, type OpportunityChange } from "./changes.js";
+import { keyDateLabel, upcomingKeyDates } from "./keydates.js";
 
 export interface DigestEntry {
   opportunity: Opportunity;
   match: Match;
+}
+
+/** A tracked solicitation that changed since the reader's last digest (deadline, addendum, cancellation…). */
+export interface DigestChange extends DigestEntry {
+  changes: OpportunityChange[];
 }
 
 /** A demand signal shown alongside opportunities, such as a new FEMA disaster declaration. */
@@ -31,6 +38,8 @@ export interface Digest {
   glance?: DigestGlance;
   /** The profile's band cutoffs, so each card can say how far it sits from Strong. Defaults apply if omitted. */
   bands?: { strong: number; possible: number };
+  /** Solicitations already shown before that changed since the last digest. */
+  changed?: DigestChange[];
   newMatches: DigestEntry[];
   closingSoon: DigestEntry[];
   intel: DigestEntry[];
@@ -106,9 +115,17 @@ export function renderDigestText(d: Digest, maxPerSection = 5): string {
       lines.push(
         `- ${o.title} | ${o.buyer.name} | due ${fmtDate(o.dueAt, d.generatedAt)} | fit ${Math.round(m.score)}`,
       );
+      const kd = upcomingKeyDates(o.keyDates ?? [], d.generatedAt, o.dueAt);
+      if (kd.length) lines.push(`  ${kd.map(keyDateLabel).join(" · ")}`);
     }
     if (rows.length > maxPerSection) lines.push(`  +${rows.length - maxPerSection} more in Radar`);
   };
+  if (d.changed?.length) {
+    lines.push("", `Changed since last email (${d.changed.length})`);
+    for (const c of d.changed.slice(0, maxPerSection))
+      lines.push(`- ${c.opportunity.title}: ${c.changes.map(changeLine).join("; ")}`);
+    if (d.changed.length > maxPerSection) lines.push(`  +${d.changed.length - maxPerSection} more in Radar`);
+  }
   section("New matches", d.newMatches);
   section("Closing within 7 days", d.closingSoon);
   if (d.secondLook.length > 0) {
@@ -133,6 +150,9 @@ export function renderDigestMarkdown(d: Digest): string {
     return [
       `**[${o.title}](${o.provenance.sourceUrl})**`,
       `${SOURCE_LABEL[o.source]} · ${o.buyer.name} · ${kindText(o)} · due ${fmtDate(o.dueAt, d.generatedAt)}`,
+      upcomingKeyDates(o.keyDates ?? [], d.generatedAt, o.dueAt)
+        .map((k) => `**${keyDateLabel(k)}**`)
+        .join(" · "),
       `**${x.headline}.** ${x.gap}`,
       ...x.rows.map((r) => `- ${r.sign}${r.points} ${r.label}: ${r.text}`),
       "",
@@ -143,6 +163,15 @@ export function renderDigestMarkdown(d: Digest): string {
     out.push(`## ${title} (${rows.length})`, "");
     for (const r of rows) out.push(...entry(r), "");
   };
+  if (d.changed?.length) {
+    out.push(`## Changed since last email (${d.changed.length})`, "");
+    for (const c of d.changed)
+      out.push(
+        `**[${c.opportunity.title}](${c.opportunity.provenance.sourceUrl})**`,
+        ...c.changes.map((x) => `- ${changeLine(x)}`),
+        "",
+      );
+  }
   section("New matches", d.newMatches);
   section("Closing within 7 days", d.closingSoon);
   if (d.secondLook.length > 0) {
@@ -174,6 +203,7 @@ export function renderDigestHtml(d: Digest): string {
     whyHtml: string,
     score?: number,
     band?: Match["band"],
+    extraHtml = "",
   ) => {
     const c =
       band === "strong" ? FIT_COLORS.strong : band === "possible" ? FIT_COLORS.possible : FIT_COLORS.notFit;
@@ -185,6 +215,7 @@ export function renderDigestHtml(d: Digest): string {
         : "") +
       `<a href="${safeUrl(url)}" style="color:#0E2F6C;font-weight:600;font-size:14px;text-decoration:none">${esc(title)}</a>` +
       `<div style="color:#556175;font-size:12px;margin-top:3px">${esc(meta)}</div>` +
+      extraHtml +
       (whyHtml ? `<div style="font-size:12px;margin-top:6px;color:#1B2433">${whyHtml}</div>` : "") +
       `</div>`
     );
@@ -199,6 +230,26 @@ export function renderDigestHtml(d: Digest): string {
           explainHtml(m, d.bands ?? BANDS),
           Math.round(m.score),
           m.band,
+          keyDatesHtml(o, d.generatedAt),
+        ),
+      )
+      .join("");
+  const changedCards = (rows: DigestChange[]) =>
+    rows
+      .map(({ opportunity: o, match: m, changes }) =>
+        card(
+          o.title,
+          o.provenance.sourceUrl,
+          `${SOURCE_LABEL[o.source]} · ${o.buyer.name} · ${kindText(o)} · due ${fmtDate(o.dueAt, d.generatedAt)}`,
+          changes
+            .map(
+              (c) =>
+                `<div style="background:${c.kind === "cancelled" || c.kind === "withdrawn" ? "#FCE8E6" : "#E8F1FB"};border-radius:6px;padding:4px 8px;margin-top:3px;font-weight:600;color:${c.kind === "cancelled" || c.kind === "withdrawn" ? "#A50E0E" : "#0E2F6C"}">${esc(changeLine(c))}</div>`,
+            )
+            .join(""),
+          Math.round(m.score),
+          m.band,
+          keyDatesHtml(o, d.generatedAt),
         ),
       )
       .join("");
@@ -210,6 +261,8 @@ export function renderDigestHtml(d: Digest): string {
       `<div style="font-size:12px;color:#D3E6F6">${esc(fmtDate(d.generatedAt))}</div></div>`,
   ];
   if (d.glance) parts.push(glanceHtml(d, font));
+  if (d.changed?.length)
+    parts.push(h2(`Changed since last email (${d.changed.length})`), changedCards(d.changed));
   if (d.newMatches.length) parts.push(h2(`New matches (${d.newMatches.length})`), entries(d.newMatches));
   if (d.closingSoon.length)
     parts.push(h2(`Closing within 7 days (${d.closingSoon.length})`), entries(d.closingSoon));
@@ -226,7 +279,7 @@ export function renderDigestHtml(d: Digest): string {
       d.signals.map((g) => card(g.title, g.sourceUrl, g.detail, "")).join(""),
     );
   if (d.intel.length) parts.push(h2(`Market intel (${d.intel.length})`), entries(d.intel));
-  if (!d.newMatches.length && !d.closingSoon.length && !d.secondLook.length)
+  if (!d.newMatches.length && !d.closingSoon.length && !d.secondLook.length && !d.changed?.length)
     parts.push(`<p style="${font};color:#556175">Nothing new that fits today.</p>`);
   parts.push(
     `<p style="${font};font-size:11px;color:#6B7689;margin-top:18px">Every item links to the public posting. Scores are explained by the reasons shown; nothing is inferred beyond what the posting states. To stop these emails, use the unsubscribe option in your mail app.</p></div>`,
@@ -272,7 +325,7 @@ function glanceHtml(d: Digest, font: string): string {
     seg(g.possible, FIT_COLORS.possible.bg) +
     seg(g.notFit, FIT_COLORS.notFit.bg) +
     `</tr></table>` +
-    `<div style="font-size:12px;margin-top:8px;color:#1B2433"><b>${d.newMatches.length}</b> new today · <b>${d.closingSoon.length}</b> closing within 7 days</div>` +
+    `<div style="font-size:12px;margin-top:8px;color:#1B2433"><b>${d.newMatches.length}</b> new today · ${d.changed?.length ? `<b>${d.changed.length}</b> changed · ` : ""}<b>${d.closingSoon.length}</b> closing within 7 days</div>` +
     (top ? line("Top match:", top, `fit ${Math.round(top.match.score)}`) : "") +
     (next ? line("Next deadline:", next, `due ${fmtDate(next.opportunity.dueAt, d.generatedAt)}`) : "") +
     `</div>`
@@ -313,7 +366,7 @@ export function explain(
     m.band === "strong"
       ? `Strong starts at ${bands.strong}.`
       : m.band === "possible"
-        ? `${Math.max(1, Math.ceil(bands.strong - m.score))} points short of Strong (${bands.strong}).`
+        ? `${Math.max(1, bands.strong - Math.round(m.score))} points short of Strong (${bands.strong}).`
         : `Possible starts at ${bands.possible}.`;
   const rows = m.reasons
     .filter((r) => Math.round(r.points) !== 0)
@@ -364,5 +417,21 @@ function explainHtml(m: Match, bands: { strong: number; possible: number }): str
     (rows
       ? `<table role="presentation" cellpadding="0" cellspacing="0" style="font-size:12px;width:100%">${rows}</table>`
       : "")
+  );
+}
+
+/** Upcoming key dates as small chips under a card's meta line; a mandatory event is called out in red. */
+function keyDatesHtml(o: Opportunity, now: string): string {
+  const kd = upcomingKeyDates(o.keyDates ?? [], now, o.dueAt);
+  if (!kd.length) return "";
+  return (
+    `<div style="margin-top:5px">` +
+    kd
+      .map((k) => {
+        const hot = k.mandatory === true;
+        return `<span style="display:inline-block;margin:2px 4px 0 0;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;background:${hot ? "#FCE8E6" : "#EEF3F8"};color:${hot ? "#A50E0E" : "#0E2F6C"}">${esc(keyDateLabel(k))}</span>`;
+      })
+      .join("") +
+    `</div>`
   );
 }

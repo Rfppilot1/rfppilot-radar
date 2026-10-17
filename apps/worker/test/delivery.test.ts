@@ -116,6 +116,47 @@ it("leads with an at-a-glance panel and colors scores by fit band", () => {
   expect(html).toContain("14 points short of Strong (55)");
 });
 
+describe("change alerts and key dates", () => {
+  it("leads with what changed and shows key dates as chips, a mandatory one in red", () => {
+    const o = {
+      id: "tx-esbd:1",
+      source: "tx-esbd",
+      title: "IV&V Services",
+      buyer: { name: "HHSC", id: null, level: "state" },
+      kind: "rfp",
+      kindLabel: null,
+      dueAt: "2026-11-30T20:00:00.000Z",
+      provenance: { sourceUrl: "https://www.txsmartbuy.gov/esbd/1" },
+      keyDates: [
+        { kind: "pre_bid", date: "2026-10-29", time: "10:00 AM", mandatory: true, note: "x" },
+        { kind: "questions_due", date: "2026-11-05", time: null, mandatory: null, note: "y" },
+      ],
+    } as unknown as Opportunity;
+    const match = { score: 60, reasons: [], band: "strong" } as never;
+    const d: Digest = {
+      profileName: "ISF",
+      generatedAt: NOW,
+      changed: [
+        {
+          opportunity: o,
+          match,
+          changes: [{ kind: "due_moved", from: "2026-11-20T20:00:00.000Z", to: "2026-11-30T20:00:00.000Z" }],
+        },
+      ],
+      newMatches: [],
+      closingSoon: [],
+      intel: [],
+      secondLook: [],
+    };
+    const html = renderDigestHtml(d);
+    expect(html).toContain("Changed since last email (1)");
+    expect(html).toContain("Deadline extended: Nov 20 → Nov 30");
+    expect(html).toMatch(/#A50E0E">Mandatory pre-bid conference Oct 29, 10:00 AM</);
+    expect(html).toContain("Questions due Nov 5");
+    expect(html).not.toContain("Nothing new that fits today");
+  });
+});
+
 describe("score explanation", () => {
   it("lists signed points, largest first, with the AI rationale in plain words", () => {
     const x = explain(

@@ -35,6 +35,7 @@ function opp(id: string, over: Partial<Opportunity> = {}): Opportunity {
     documents: [],
     version: null,
     hasAddendum: false,
+    keyDates: [],
     provenance: {
       source: "tx-esbd",
       sourceUrl: `https://www.txsmartbuy.gov/esbd/RFP-${id}`,
@@ -256,6 +257,48 @@ describe.each(impls)("%s repository", (_name, make) => {
     const d = await buildDigest(repo, "isf", "isf-main", { since: "2026-10-15T00:00:00.000Z", now: NOW });
     expect(d.newMatches.map((e) => e.opportunity.id)).toEqual(["tx-esbd:1"]);
     expect(d.secondLook.map((s) => [s.opportunity.id, s.why])).toEqual([["tx-esbd:2", "changed"]]);
+  });
+
+  it("alerts on tracked bids that changed since the last digest, including ones pulled early", async () => {
+    await repo.upsertProfile(profile(), NOW);
+    await ingestRun(
+      repo,
+      {
+        source: "tx-esbd",
+        opportunities: ["1", "2", "3", "4", "5", "6"].map((i) => opp(i)),
+        rejected: [],
+        fetchedAt: NOW,
+        complete: true,
+      },
+      NOW,
+    );
+    await rescoreProfile(repo, profile(), NOW);
+    const later = "2026-10-16T14:00:00.000Z";
+    // Next run: 1 is extended, 3 is gone from the source before its deadline, the rest are unchanged.
+    await ingestRun(
+      repo,
+      {
+        source: "tx-esbd",
+        opportunities: [
+          opp("1", {
+            dueAt: "2026-11-30T20:00:00.000Z",
+            provenance: { ...opp("1").provenance, contentHash: "d".repeat(64) },
+          }),
+          ...["2", "4", "5", "6"].map((i) => opp(i)),
+        ],
+        rejected: [],
+        fetchedAt: later,
+        complete: true,
+      },
+      later,
+    );
+    await rescoreProfile(repo, profile(), later);
+    const d = await buildDigest(repo, "isf", "isf-main", { since: "2026-10-16T00:00:00.000Z", now: later });
+    expect(d.changed?.map((c) => [c.opportunity.id, c.changes.map((x) => x.kind)])).toEqual([
+      ["tx-esbd:1", ["due_moved"]],
+      ["tx-esbd:3", ["withdrawn"]],
+    ]);
+    expect(d.newMatches).toEqual([]);
   });
 
   it("applies a reviewer to weak matches, reuses the review while unchanged, and survives reviewer errors", async () => {

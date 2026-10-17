@@ -1,4 +1,4 @@
-import { Opportunity, type ClassificationCode, type OpportunityStatus } from "@radar/core";
+import { Opportunity, extractKeyDates, type ClassificationCode, type OpportunityStatus } from "@radar/core";
 import { z } from "zod";
 import type { HttpClient } from "./http.js";
 import {
@@ -8,6 +8,7 @@ import {
   type FetchWindow,
   type SourceConnector,
 } from "./types.js";
+import { htmlToText } from "./fl-mfmp.js";
 import { clean, contentHash, zonedToUtcIso } from "./util.js";
 
 /**
@@ -48,6 +49,32 @@ export const TxEsbdPage = z.object({
   totalRecordsFound: z.union([z.string(), z.number()]),
 });
 
+/**
+ * The public detail page's own data service (the same call the page at /esbd/<solicitation id> makes). It adds
+ * the description, contact, addendum log and posted attachments that the search list omits.
+ */
+export const txDetailUrl = (solicitationId: string) =>
+  `${TX_ESBD_BASE}/app/extensions/CPA/CPAMain/1.0.0/services/ESBD.Details.Service.ss?c=852252&email=&identification=${encodeURIComponent(solicitationId)}&n=2&optOutKey=&urlRoot=esbd`;
+
+export const TxEsbdDetail = z
+  .object({
+    description: z.string().nullable().optional(),
+    contactName: z.string().nullable().optional(),
+    contactNumber: z.string().nullable().optional(),
+    contactEmail: z.string().nullable().optional(),
+    attachments: z
+      .array(
+        z.object({
+          fileName: z.string().nullable().optional(),
+          fileURL: z.string().nullable().optional(),
+          fileDescription: z.string().nullable().optional(),
+        }),
+      )
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
 /** ESBD status codes observed on the public search form. */
 const STATUS: Record<string, OpportunityStatus> = {
   "1": "open", // Posted
@@ -74,8 +101,29 @@ function buyerLevel(agencyNumber: string): "state" | "local" {
   return /^\d+$/.test(agencyNumber.trim()) ? "state" : "local";
 }
 
-export function normalizeTxEsbd(raw: unknown, fetchedAt: string): Opportunity {
+export function normalizeTxEsbd(raw: unknown, fetchedAt: string, detailRaw?: unknown): Opportunity {
   const l = TxEsbdLine.parse(raw);
+  const detail = detailRaw === undefined || detailRaw === null ? null : TxEsbdDetail.parse(detailRaw);
+  const description = htmlToText(detail?.description);
+  const documents = (detail?.attachments ?? []).flatMap((a) =>
+    a.fileURL
+      ? [
+          {
+            filename: a.fileName ?? null,
+            url: new URL(a.fileURL, TX_ESBD_BASE).toString(),
+            description: clean(a.fileDescription ?? null),
+            postedAt: null,
+          },
+        ]
+      : [],
+  );
+  const contact = detail
+    ? {
+        name: clean(detail.contactName ?? null),
+        email: clean(detail.contactEmail ?? null),
+        phone: clean(detail.contactNumber ?? null),
+      }
+    : null;
   const status = STATUS[l.status] ?? (/addendum|posted/i.test(l.statusName) ? "open" : "unknown");
   const postedAt = zonedToUtcIso(l.postingDate, "12:00 AM", TX_TZ);
   const sourceUrl = `${TX_ESBD_BASE}/esbd/${encodeURIComponent(l.solicitationId)}`;
@@ -86,7 +134,7 @@ export function normalizeTxEsbd(raw: unknown, fetchedAt: string): Opportunity {
     sourceRecordId: l.internalid,
     solicitationNumber: clean(l.solicitationId),
     title: clean(l.title) ?? l.solicitationId,
-    description: null,
+    description,
     kind,
     kindLabel: null,
     status,
@@ -101,10 +149,14 @@ export function normalizeTxEsbd(raw: unknown, fetchedAt: string): Opportunity {
     dueTimezone: l.responseDue ? TX_TZ : null,
     codes: parseNigp(l.nigpCodes),
     setAside: null,
-    contact: null,
-    documents: [],
+    contact,
+    documents,
     version: null,
-    hasAddendum: l.status === "6" || /addendum/i.test(l.statusName),
+    hasAddendum:
+      l.status === "6" ||
+      /addendum/i.test(l.statusName) ||
+      documents.some((d) => /addend/i.test(`${d.filename}`)),
+    keyDates: extractKeyDates(description, { now: fetchedAt }),
     provenance: { source: "tx-esbd", sourceUrl, fetchedAt, contentHash: contentHash(l), basis: "tx-esbd" },
   });
 }
@@ -116,11 +168,26 @@ export interface TxEsbdOptions {
   /** Upper bound on pages per run. Each page holds 24 records. */
   maxPages?: number;
   now?: () => string;
+  /**
+   * Fetch each posting's detail (description, attachments, contact). Off by default to keep tests and one-off
+   * runs light; the scheduled worker turns it on.
+   */
+  details?: {
+    /** Upper bound on detail requests per run. */
+    max?: number;
+    /**
+     * Content hashes of records already stored WITH detail. A posting whose list entry is unchanged is not
+     * re-fetched; it is reported as partial so the stored, fuller copy is kept.
+     */
+    known?: ReadonlyMap<string, string>;
+    onProgress?: (p: { listed: number; detailsDone: number }) => void;
+  };
 }
 
 export class TxEsbdConnector implements SourceConnector {
   readonly id = "tx-esbd" as const;
   readonly basis = "tx-esbd";
+  private readonly lines = new Map<string, unknown>();
   constructor(private readonly opts: TxEsbdOptions) {}
 
   async fetch(window: FetchWindow = {}): Promise<ConnectorRun> {
@@ -159,6 +226,7 @@ export class TxEsbdConnector implements SourceConnector {
       for (const line of parsed.lines) {
         try {
           const opp = normalizeTxEsbd(line, fetchedAt);
+          this.lines.set(opp.id, line);
           if (window.since && opp.postedAt && opp.postedAt < window.since && !opp.hasAddendum) {
             skipped++;
             continue;
@@ -175,6 +243,7 @@ export class TxEsbdConnector implements SourceConnector {
         break;
       }
     }
+    if (this.opts.details) await this.enrich(run, this.opts.details);
     const capped = run.opportunities.length > cap;
     if (capped) run.opportunities = run.opportunities.slice(0, cap);
     run.complete =
@@ -183,6 +252,38 @@ export class TxEsbdConnector implements SourceConnector {
       !capped &&
       skipped === 0 &&
       !run.rejected.some((r) => r.sourceRecordId === null);
+    // Detail failures don't make a run incomplete: those records were still seen and keep their stored copy.
     return run;
+  }
+
+  /** Replaces list-only records with detail-enriched ones, skipping postings already stored with detail. */
+  private async enrich(run: ConnectorRun, d: NonNullable<TxEsbdOptions["details"]>): Promise<void> {
+    run.partialIds ??= [];
+    let budget = d.max ?? 600;
+    let done = 0;
+    d.onProgress?.({ listed: run.opportunities.length, detailsDone: 0 });
+    for (let i = 0; i < run.opportunities.length; i++) {
+      const opp = run.opportunities[i]!;
+      if (opp.status !== "open") continue;
+      if (d.known?.get(opp.id) === opp.provenance.contentHash || budget <= 0) {
+        run.partialIds.push(opp.id);
+        continue;
+      }
+      budget--;
+      try {
+        const raw = await this.opts.http.json<unknown>(
+          txDetailUrl(opp.solicitationNumber ?? opp.sourceRecordId),
+        );
+        run.opportunities[i] = normalizeTxEsbd(this.lines.get(opp.id), run.fetchedAt, raw);
+      } catch (err) {
+        run.partialIds.push(opp.id);
+        run.rejected.push({
+          sourceRecordId: opp.sourceRecordId,
+          error: `detail: ${(err as Error).message.slice(0, 250)}`,
+        });
+      }
+      if (++done % 50 === 0) d.onProgress?.({ listed: run.opportunities.length, detailsDone: done });
+    }
+    d.onProgress?.({ listed: run.opportunities.length, detailsDone: done });
   }
 }

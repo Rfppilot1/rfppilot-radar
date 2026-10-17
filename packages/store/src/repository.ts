@@ -81,6 +81,10 @@ export interface Repository {
   getOpportunity(id: string): Promise<Opportunity | null>;
   getOpportunities(ids: string[]): Promise<Map<string, Opportunity>>;
   listOpportunities(q: OpportunityQuery): Promise<Opportunity[]>;
+  /** Ids of opportunities with a new stored version (content change or close) at or after `since`. */
+  changedSince(since: string): Promise<string[]>;
+  /** For each id, the latest stored version from before `before`; ids first seen later are absent. */
+  versionsBefore(ids: string[], before: string): Promise<Map<string, Opportunity>>;
 
   upsertProfile(profile: FirmProfile, at: string): Promise<void>;
   getProfile(tenantId: string, profileId: string): Promise<FirmProfile | null>;

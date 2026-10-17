@@ -38,6 +38,7 @@ password never appears in this repo.
 | `RADAR_UNSUBSCRIBE_EMAIL`   |     | ✓      | A mailbox you read, e.g. `radar-unsubscribe@rfppilot.com` (honor requests within 10 business days)                     |
 | `RADAR_RECIPIENTS`          |     | ✓      | `isf/isf-main=ben@rfppilot.com` at first; add Monica's address after the first clean digests                           |
 | `RADAR_DIGEST_REPLAY_UNTIL` |     | ✓      | Optional. An ISO time; runs before it re-send the full current list (to preview a template change). Expires on its own |
+| `RADAR_TX_MAX_DETAILS`      |     | ✓      | Optional. Cap on Texas detail requests per run (default 600); unchanged postings are never re-fetched                  |
 | `RADAR_SAM_STATES`          |     | ✓      | `FL,TX`                                                                                                                |
 | `RADAR_USER_AGENT`          |     | ✓      | `RFPPilotRadar/0.1 (+https://rfppilot.com; ben@rfppilot.com)`                                                          |
 

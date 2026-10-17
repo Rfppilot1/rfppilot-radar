@@ -89,6 +89,49 @@ describe("Texas ESBD", () => {
     expect(run.rejected).toEqual([]);
   });
 
+  it("reads each posting's detail for description, documents and key dates, skipping ones stored unchanged", async () => {
+    const lines = fx("tx-esbd.synthetic.json");
+    const detail = fx("tx-esbd-detail.synthetic.json");
+    const urls: string[] = [];
+    const fetchImpl = async (u: string) => {
+      urls.push(u);
+      return new Response(
+        JSON.stringify(
+          u.includes("ESBD.Details") ? detail : { lines, page: 1, recordsPerPage: 24, totalRecordsFound: 2 },
+        ),
+      );
+    };
+    const http = new HttpClient({
+      userAgent: "t",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      sleep: noSleep,
+      minIntervalMs: 0,
+    });
+    const first = await new TxEsbdConnector({ http, now: () => AT, details: {} }).fetch();
+    const o = first.opportunities[0]!;
+    expect(o.description).toMatch(/^HHSC seeks an IV&V vendor/);
+    expect(o.documents.map((d) => d.filename)).toEqual([
+      "ESBD_900001_RFP 529-27-0001.pdf",
+      "ESBD_900001_Addendum No. 1.pdf",
+    ]);
+    expect(o.documents[0]!.url).toMatch(/^https:\/\/www\.txsmartbuy\.gov\/core\/media\//);
+    expect(o.hasAddendum).toBe(true);
+    expect(o.contact?.email).toBe("pat.buyer@example.gov");
+    expect(o.keyDates.map((k) => [k.kind, k.date, k.time, k.mandatory])).toEqual([
+      ["pre_bid", "2026-10-29", "10:00 AM", true],
+      ["questions_due", "2026-11-05", null, null],
+    ]);
+    expect(urls.filter((u) => u.includes("ESBD.Details"))).toHaveLength(2);
+
+    // Second run: both postings are already stored with detail and unchanged, so no detail calls.
+    urls.length = 0;
+    const known = new Map(first.opportunities.map((x) => [x.id, x.provenance.contentHash] as const));
+    const second = await new TxEsbdConnector({ http, now: () => AT, details: { known } }).fetch();
+    expect(urls.filter((u) => u.includes("ESBD.Details"))).toHaveLength(0);
+    expect(second.partialIds).toEqual(first.opportunities.map((x) => x.id));
+    expect(second.complete).toBe(true);
+  });
+
   it("keeps malformed records as rejects instead of dropping them silently", async () => {
     const fetchImpl = async () =>
       new Response(

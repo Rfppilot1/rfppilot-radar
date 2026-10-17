@@ -149,6 +149,13 @@ export class PostgresRepository implements Repository {
         [source, seenSince],
       )
     ).rows;
+    // Record the close as a version, so a digest can tell a reader that a tracked posting was pulled.
+    if (rows.length)
+      await this.db.query(
+        `INSERT INTO opportunity_versions (opportunity_id, content_hash, seen_at, data)
+         SELECT id, content_hash, $2, data FROM opportunities WHERE id = ANY($1)`,
+        [rows.map((r) => r.id), seenSince],
+      );
     return { ...result, closed: rows.map((r) => r.id) };
   }
 
@@ -176,6 +183,29 @@ export class PostgresRepository implements Repository {
       const o = Opportunity.parse(json(r.data));
       m.set(o.id, o);
     }
+    return m;
+  }
+
+  async changedSince(since: string) {
+    return (
+      await this.db.query<{ id: string }>(
+        `SELECT DISTINCT opportunity_id AS id FROM opportunity_versions WHERE seen_at >= $1`,
+        [since],
+      )
+    ).rows.map((r) => r.id);
+  }
+
+  async versionsBefore(ids: string[], before: string) {
+    const m = new Map<string, Opportunity>();
+    if (ids.length === 0) return m;
+    const rows = (
+      await this.db.query<{ id: string; data: unknown }>(
+        `SELECT DISTINCT ON (opportunity_id) opportunity_id AS id, data FROM opportunity_versions
+          WHERE opportunity_id = ANY($1) AND seen_at < $2 ORDER BY opportunity_id, seen_at DESC, id DESC`,
+        [ids, before],
+      )
+    ).rows;
+    for (const r of rows) m.set(r.id, Opportunity.parse(json(r.data)));
     return m;
   }
 

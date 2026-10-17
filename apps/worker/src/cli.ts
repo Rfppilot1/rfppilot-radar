@@ -63,11 +63,24 @@ async function openRepo(): Promise<Repository> {
   return new MemoryRepository();
 }
 
-function connectors(sources: SourceId[]): SourceConnector[] {
+function connectors(
+  sources: SourceId[],
+  txKnown: ReadonlyMap<string, string> = new Map(),
+): SourceConnector[] {
   const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1500 });
   const out: SourceConnector[] = [];
   for (const s of sources) {
-    if (s === "tx-esbd") out.push(new TxEsbdConnector({ http }));
+    if (s === "tx-esbd")
+      out.push(
+        new TxEsbdConnector({
+          http,
+          details: {
+            known: txKnown,
+            max: Number(process.env.RADAR_TX_MAX_DETAILS ?? 600),
+            onProgress: (p) => log({ event: "progress", source: s, ...p }),
+          },
+        }),
+      );
     else if (s === "fl-mfmp")
       out.push(
         new FlMfmpConnector({
@@ -99,8 +112,19 @@ const NORMALIZERS: Record<string, (raw: unknown, at: string) => Opportunity> = {
   "sam-gov": normalizeSam,
 };
 
+/** Texas records already stored with their detail, so unchanged postings are not fetched again. */
+async function txKnown(repo: Repository): Promise<Map<string, string>> {
+  const stored = await repo.listOpportunities({ sources: ["tx-esbd"], openOnly: true, limit: 20_000 });
+  return new Map(
+    stored
+      .filter((o) => o.description !== null || o.documents.length > 0)
+      .map((o) => [o.id, o.provenance.contentHash] as const),
+  );
+}
+
 async function ingest(repo: Repository, sources: SourceId[], max?: number) {
-  for (const c of connectors(sources)) {
+  const known = sources.includes("tx-esbd") ? await txKnown(repo) : new Map<string, string>();
+  for (const c of connectors(sources, known)) {
     const started = new Date().toISOString();
     try {
       log({ event: "ingest_start", source: c.id, rssMb: Math.round(process.memoryUsage().rss / 1e6) });

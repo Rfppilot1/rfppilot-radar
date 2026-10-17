@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0 (2026-10-17)
+
+- **Change alerts.** The digest opens with "Changed since last email": tracked bids (strong or possible matches, or
+  ones marked pursue/watch) whose deadline moved, that got an addendum or new documents, a new or moved key date,
+  or that were cancelled or pulled before their deadline. Changes are computed from stored version history, and
+  detail Radar only just started reading is never reported as a change. Closes by absence are now recorded as
+  versions.
+- **Key dates.** Pre-bid conferences, site visits, question deadlines and bid openings are read from each
+  posting's own text (conservatively: a date is shown only when the same sentence states it) and shown as chips on
+  every card, mandatory events in red. Florida also flags its pre-solicitation-conference indicator.
+- **Texas detail.** The Texas connector reads each new or changed posting's detail (description, contact,
+  attachments with original file names), which also gives the scorer and the AI reviewer real text for Texas.
+  `RADAR_TX_MAX_DETAILS` caps detail requests per run (default 600).
+- Fixes: the AI reviewer's rationale is clipped at a clause boundary instead of mid-word; "points short of Strong"
+  is computed from the displayed score.
+
 ## 0.3.1 (2026-10-17)
 
 - Digest email opens with an "At a glance" panel: open solicitations read (by source), green/amber/red tiles for

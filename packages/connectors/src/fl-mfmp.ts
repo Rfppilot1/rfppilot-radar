@@ -1,5 +1,6 @@
 import {
   Opportunity,
+  extractKeyDates,
   isIntel,
   type ClassificationCode,
   type DocumentRef,
@@ -194,6 +195,18 @@ export function normalizeFlAd(raw: unknown, fetchedAt: string, detailRaw?: unkno
       }
     : null;
   const status = awardPosted ? "awarded" : (STATUS[ad.status] ?? "unknown");
+  const description = htmlToText(detail?.description);
+  const keyDates = extractKeyDates(description, { now: fetchedAt });
+  const indicators = (detail as { indicators?: Record<string, unknown> } | null)?.indicators;
+  if (indicators?.preSolicitationConference === true && !keyDates.some((k) => k.kind === "pre_bid")) {
+    keyDates.push({
+      kind: "pre_bid",
+      date: null,
+      time: null,
+      mandatory: null,
+      note: "The posting flags a pre-solicitation conference.",
+    });
+  }
 
   return Opportunity.parse({
     id: opportunityId("fl-mfmp", String(ad.advertisementId)),
@@ -201,7 +214,7 @@ export function normalizeFlAd(raw: unknown, fetchedAt: string, detailRaw?: unkno
     sourceRecordId: String(ad.advertisementId),
     solicitationNumber: clean(ad.agencyAdNumber ?? null),
     title: clean(ad.title) ?? ad.uniqueName,
-    description: htmlToText(detail?.description),
+    description,
     kind: FL_AD_TYPES[ad.type] ?? "other",
     kindLabel: ad.type,
     status,
@@ -221,6 +234,7 @@ export function normalizeFlAd(raw: unknown, fetchedAt: string, detailRaw?: unkno
     version: ad.version ?? null,
     hasAddendum:
       (ad.version ?? 1) > 1 || documents.some((d) => /addend/i.test(`${d.description} ${d.filename}`)),
+    keyDates,
     provenance: {
       source: "fl-mfmp",
       sourceUrl: `${FL_VIP_BASE}/search/bids/detail/${ad.advertisementId}`,

@@ -1,0 +1,25 @@
+{
+  "internalid": "900001",
+  "solicitationId": "529-27-0001",
+  "description": "<p>HHSC seeks an IV&amp;V vendor for eligibility system modernization.</p><p>A <b>mandatory</b> pre-proposal conference will be held October 29, 2026 at 10:00 AM CT via Teams. Questions are due no later than November 5, 2026.</p>",
+  "contactName": "Pat Buyer",
+  "contactNumber": "(512) 555-0100",
+  "contactEmail": "pat.buyer@example.gov",
+  "addendum": "<b>10/20/2026 9:33 am:</b> Addendum No. 1",
+  "attachments": [
+    {
+      "id": "900001",
+      "fileId": "1",
+      "fileName": "ESBD_900001_RFP 529-27-0001.pdf",
+      "fileURL": "/core/media/media.nl?id=1&c=852252&h=abc&_xt=.pdf",
+      "fileDescription": "Solicitation"
+    },
+    {
+      "id": "900001",
+      "fileId": "2",
+      "fileName": "ESBD_900001_Addendum No. 1.pdf",
+      "fileURL": "/core/media/media.nl?id=2&c=852252&h=def&_xt=.pdf",
+      "fileDescription": "Addendum No. 1"
+    }
+  ]
+}

@@ -3,11 +3,13 @@ import {
   applyReview,
   resolveScoring,
   daysBetween,
+  diffOpportunity,
   needsReview,
   profileHash,
   scoreOpportunity,
   secondLook,
   type Digest,
+  type DigestChange,
   type DigestEntry,
   type Match,
   type Opportunity,
@@ -183,10 +185,46 @@ export async function buildDigest(
     bySource,
   };
 
+  // Change alerts: anything the reader is tracking (a strong or possible match, or a bid they chose to
+  // pursue) whose posting changed since their last digest. New matches are listed as new instead.
+  const newIds = new Set(
+    matches.filter((m) => good(m.band) && isNew(m.firstGoodAt)).map((m) => m.opportunityId),
+  );
+  const changedIds = new Set(await repo.changedSince(o.since));
+  const tracked = changedIds.size
+    ? (
+        await repo.listMatches(tenantId, profileId, {
+          bands: ["strong", "possible", "weak", "excluded"],
+          limit: 100_000,
+        })
+      ).filter(
+        (m) =>
+          changedIds.has(m.opportunityId) &&
+          !newIds.has(m.opportunityId) &&
+          notPassed(m.opportunityId) &&
+          (good(m.band) || ["pursue", "watch"].includes(decided.get(m.opportunityId)?.decision ?? "")),
+      )
+    : [];
+  const trackedIds = tracked.map((m) => m.opportunityId);
+  const [current, baseline] = await Promise.all([
+    repo.getOpportunities(trackedIds),
+    repo.versionsBefore(trackedIds, o.since),
+  ]);
+  const changed: DigestChange[] = tracked
+    .flatMap((m) => {
+      const cur = current.get(m.opportunityId);
+      const prev = baseline.get(m.opportunityId);
+      if (!cur || !prev) return [];
+      const changes = diffOpportunity(prev, cur, o.now);
+      return changes.length ? [{ opportunity: cur, match: m, changes }] : [];
+    })
+    .sort((a, b) => b.match.score - a.match.score);
+
   return {
     profileName: profile.name,
     generatedAt: o.now,
     glance,
+    changed,
     bands: resolveScoring(profile).bands,
     newMatches: entries(
       (e) =>

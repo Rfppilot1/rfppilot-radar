@@ -24,6 +24,7 @@ export function opp(over: Partial<Opportunity> = {}): Opportunity {
     documents: [],
     version: null,
     hasAddendum: false,
+    keyDates: [],
     provenance: {
       source: "tx-esbd",
       sourceUrl: "https://www.txsmartbuy.gov/esbd/RFP%201",
