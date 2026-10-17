@@ -132,6 +132,40 @@ const StateCode = z
   .transform((s) => s.trim().toUpperCase())
   .pipe(z.string().regex(/^[A-Z]{2}$/, "Expected a two-letter state code"));
 
+const points = (min: number, max: number) => z.number().min(min).max(max);
+
+/**
+ * Per-profile scoring overrides. Anything left out uses the defaults in scoring.ts, so a customer can say
+ * "known buyers matter more" or "raise the strong cutoff" without a code change.
+ */
+export const ScoringOverrides = z
+  .object({
+    weights: z
+      .object({
+        codePrimary: points(0, 100),
+        codeExtra: points(0, 50),
+        codeExtraCap: points(0, 100),
+        capability: points(0, 100),
+        capabilityTitleMultiplier: points(1, 5),
+        capabilityCap: points(0, 100),
+        knownBuyer: points(0, 100),
+        exclusion: points(-100, 0),
+        tightTiming: points(-100, 0),
+      })
+      .partial()
+      .strict()
+      .default({}),
+    bands: z
+      .object({ strong: points(1, 100), possible: points(1, 100) })
+      .partial()
+      .strict()
+      .default({}),
+    kindPoints: z.record(NoticeKind, points(-50, 50)).default({}),
+  })
+  .strict()
+  .default({});
+export type ScoringOverrides = z.infer<typeof ScoringOverrides>;
+
 /** A firm's targeting profile. One per tenant (or several, e.g. per practice). */
 export const FirmProfile = z.object({
   id: z.string().min(1),
@@ -157,6 +191,8 @@ export const FirmProfile = z.object({
   knownBuyers: z.array(z.string().min(2)).default([]),
   /** Minimum days before the due date for the firm to respond credibly. */
   minDaysToRespond: z.number().int().min(0).default(10),
+  /** Optional per-profile point values and band cutoffs; defaults apply where omitted. */
+  scoring: ScoringOverrides,
   /** Where the daily digest goes. Empty means the digest is only available through the API. */
   delivery: z.object({ email: z.array(z.string().email()).max(20).default([]) }).default({ email: [] }),
 });

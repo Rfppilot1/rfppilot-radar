@@ -1,6 +1,7 @@
 import {
   FirmProfile,
   applyReview,
+  resolveScoring,
   daysBetween,
   needsReview,
   profileHash,
@@ -104,6 +105,7 @@ export async function rescoreProfile(
     ).map((m) => [m.opportunityId, m] as const),
   );
   const pHash = profileHash(profile);
+  const { bands } = resolveScoring(profile);
   let budget = o.maxReviews ?? 50;
   const matches: Match[] = [];
   for (const opp of opps) {
@@ -112,11 +114,11 @@ export async function rescoreProfile(
       const key = { contentHash: opp.provenance.contentHash, profileHash: pHash };
       const prior = previous.get(opp.id)?.review;
       if (prior && prior.contentHash === key.contentHash && prior.profileHash === key.profileHash) {
-        m = applyReview(m, prior, key);
+        m = applyReview(m, prior, key, bands);
       } else if (budget > 0) {
         budget--;
         try {
-          m = applyReview(m, await o.reviewer.review(opp, profile), key);
+          m = applyReview(m, await o.reviewer.review(opp, profile), key, bands);
         } catch (err) {
           o.onReviewError?.(opp.id, err as Error);
         }
@@ -186,6 +188,7 @@ export async function buildDigest(
       decisions,
       hashAtDecision: new Map(decisions.map((d) => [d.opportunityId, d.hashAtDecision])),
       now: o.now,
+      possibleCutoff: resolveScoring(profile).bands.possible,
     }),
   };
 }

@@ -6,6 +6,7 @@ import {
   type NoticeKind,
   type Opportunity,
   type Reason,
+  ScoringOverrides,
 } from "./schema.js";
 import { daysBetween, hasPhrase, normalize } from "./text.js";
 
@@ -42,6 +43,21 @@ export const KIND_POINTS: Partial<Record<NoticeKind, number>> = {
 
 export const BANDS = { strong: 55, possible: 30 } as const;
 
+export interface ResolvedScoring {
+  weights: { [K in keyof typeof WEIGHTS]: number };
+  bands: { strong: number; possible: number };
+  kindPoints: Partial<Record<NoticeKind, number>>;
+}
+
+/** Defaults overlaid with the profile's own scoring overrides. */
+export function resolveScoring(profile: { scoring?: unknown }): ResolvedScoring {
+  const o = ScoringOverrides.parse(profile.scoring ?? {});
+  const bands = { ...BANDS, ...o.bands };
+  if (bands.possible >= bands.strong)
+    throw new Error(`Scoring bands: "possible" (${bands.possible}) must be below "strong" (${bands.strong})`);
+  return { weights: { ...WEIGHTS, ...o.weights }, bands, kindPoints: { ...KIND_POINTS, ...o.kindPoints } };
+}
+
 export interface ScoreOptions {
   now?: string;
 }
@@ -52,6 +68,7 @@ export function scoreOpportunity(
   options: ScoreOptions = {},
 ): Match {
   const profile = FirmProfile.parse(profileInput);
+  const { weights: WEIGHTS_, bands: BANDS_, kindPoints } = resolveScoring(profile);
   const now = options.now ?? new Date().toISOString();
   const reasons: Reason[] = [];
   const lane: Match["lane"] = isIntel(opp.kind) ? "intel" : "bid";
@@ -98,7 +115,7 @@ export function scoreOpportunity(
     } else if (days < profile.minDaysToRespond) {
       reasons.push({
         factor: "timing",
-        points: WEIGHTS.tightTiming,
+        points: WEIGHTS_.tightTiming,
         detail: `Only ${Math.floor(days)} day(s) to respond; profile needs ${profile.minDaysToRespond}`,
       });
     }
@@ -122,10 +139,10 @@ export function scoreOpportunity(
     const [best, ...rest] = codeHits;
     reasons.push({
       factor: "code",
-      points: round(WEIGHTS.codePrimary * best!.weight),
+      points: round(WEIGHTS_.codePrimary * best!.weight),
       detail: `Classification matches profile: ${best!.label}`,
     });
-    const extra = Math.min(WEIGHTS.codeExtraCap, rest.length * WEIGHTS.codeExtra);
+    const extra = Math.min(WEIGHTS_.codeExtraCap, rest.length * WEIGHTS_.codeExtra);
     if (extra > 0) {
       reasons.push({ factor: "code", points: extra, detail: `${rest.length} more matching code(s)` });
     }
@@ -138,17 +155,17 @@ export function scoreOpportunity(
   const capHits: string[] = [];
   for (const cap of profile.capabilities) {
     if (hasPhrase(title, cap.phrase)) {
-      capPoints += WEIGHTS.capability * cap.weight * WEIGHTS.capabilityTitleMultiplier;
+      capPoints += WEIGHTS_.capability * cap.weight * WEIGHTS_.capabilityTitleMultiplier;
       capHits.push(`"${cap.phrase}" (title)`);
     } else if (hasPhrase(body, cap.phrase)) {
-      capPoints += WEIGHTS.capability * cap.weight;
+      capPoints += WEIGHTS_.capability * cap.weight;
       capHits.push(`"${cap.phrase}"`);
     }
   }
   if (capHits.length > 0) {
     reasons.push({
       factor: "capability",
-      points: round(Math.min(WEIGHTS.capabilityCap, capPoints)),
+      points: round(Math.min(WEIGHTS_.capabilityCap, capPoints)),
       detail: `Matches capabilities: ${capHits.join(", ")}`,
     });
   }
@@ -158,7 +175,7 @@ export function scoreOpportunity(
   if (exclusionHits.length > 0) {
     reasons.push({
       factor: "exclusion",
-      points: WEIGHTS.exclusion,
+      points: WEIGHTS_.exclusion,
       detail: `Contains excluded term(s): ${exclusionHits.map((p) => `"${p}"`).join(", ")}`,
     });
   }
@@ -169,13 +186,13 @@ export function scoreOpportunity(
   if (buyerHit) {
     reasons.push({
       factor: "buyer",
-      points: WEIGHTS.knownBuyer,
+      points: WEIGHTS_.knownBuyer,
       detail: `Past or current buyer: ${buyerHit}`,
     });
   }
 
   // Notice kind.
-  const kp = KIND_POINTS[opp.kind];
+  const kp = kindPoints[opp.kind];
   if (kp) {
     reasons.push({ factor: "kind", points: kp, detail: `Notice type: ${opp.kindLabel ?? opp.kind}` });
   }
@@ -186,9 +203,9 @@ export function scoreOpportunity(
 
   let band: Match["band"];
   if (hardExclude) band = "excluded";
-  else if (exclusionHits.length > 0 && score < BANDS.strong) band = "excluded";
-  else if (score >= BANDS.strong) band = "strong";
-  else if (score >= BANDS.possible) band = "possible";
+  else if (exclusionHits.length > 0 && score < BANDS_.strong) band = "excluded";
+  else if (score >= BANDS_.strong) band = "strong";
+  else if (score >= BANDS_.possible) band = "possible";
   else band = "weak";
 
   return {

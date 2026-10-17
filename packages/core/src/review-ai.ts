@@ -41,6 +41,7 @@ export function applyReview(
   m: Match,
   v: ReviewVerdict,
   key?: { contentHash: string; profileHash: string },
+  bands: { strong: number; possible: number } = BANDS,
 ): Match {
   const points = REVIEW_POINTS[v.verdict];
   const reasons = [
@@ -56,7 +57,7 @@ export function applyReview(
   const total = reasons.reduce((s, r) => s + r.points, 0);
   const score = Math.max(0, Math.min(100, Math.round(total * 10) / 10));
   const band: Match["band"] =
-    score >= BANDS.strong ? "strong" : score >= BANDS.possible ? "possible" : "weak";
+    score >= bands.strong ? "strong" : score >= bands.possible ? "possible" : "weak";
   return {
     ...m,
     reasons,

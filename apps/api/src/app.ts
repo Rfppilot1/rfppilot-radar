@@ -8,6 +8,7 @@ import {
   renderDigestText,
   secondLook,
   toHandoff,
+  resolveScoring,
 } from "@radar/core";
 import { NotFoundError, buildDigest, type Repository } from "@radar/store";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
@@ -285,12 +286,14 @@ function registerTenantRoutes(app: FastifyInstance, repo: Repository, now: () =>
     });
     const decisions = await repo.listDecisions(tenantId, profileId);
     const opps = await repo.getOpportunities(matches.map((m) => m.opportunityId));
+    const profile = await repo.getProfile(tenantId, profileId);
     const items = secondLook({
       opportunities: opps,
       matches,
       decisions,
       hashAtDecision: new Map(decisions.map((d) => [d.opportunityId, d.hashAtDecision])),
       now: at,
+      possibleCutoff: profile ? resolveScoring(profile).bands.possible : undefined,
     });
     return { items };
   });

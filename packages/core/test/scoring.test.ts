@@ -93,3 +93,29 @@ describe("profile and lane rules", () => {
     expect(isBiddable("informational")).toBe(false);
   });
 });
+
+describe("per-profile scoring overrides", () => {
+  it("uses the profile's own point values and cutoffs, and defaults for anything omitted", async () => {
+    const { resolveScoring, WEIGHTS } = await import("../src/index.js");
+    const base = scoreOpportunity(opp(), PROFILE, { now: NOW });
+    const buyerPts = (m: typeof base) => m.reasons.find((r) => r.factor === "buyer")!.points;
+    const boosted = scoreOpportunity(
+      opp(),
+      { ...PROFILE, scoring: { weights: { knownBuyer: 25 } } },
+      { now: NOW },
+    );
+    expect(buyerPts(base)).toBe(WEIGHTS.knownBuyer);
+    expect(buyerPts(boosted)).toBe(25);
+    // Raising the strong cutoff above the score demotes the band without changing the score.
+    const strict = scoreOpportunity(
+      opp(),
+      { ...PROFILE, scoring: { bands: { strong: 100, possible: 30 } } },
+      { now: NOW },
+    );
+    expect(strict.score).toBe(base.score);
+    expect(strict.band).toBe(base.score >= 100 ? "strong" : "possible");
+    expect(resolveScoring({}).bands).toEqual(BANDS);
+    expect(() => resolveScoring({ scoring: { bands: { strong: 30, possible: 40 } } })).toThrow(/below/);
+    expect(() => resolveScoring({ scoring: { weights: { typo: 5 } } })).toThrow();
+  });
+});

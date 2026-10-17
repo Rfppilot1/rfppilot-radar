@@ -28,11 +28,14 @@ export interface SecondLookInput {
   hashAtDecision?: Map<string, string>;
   now?: string;
   windowDays?: number;
+  /** The profile's "possible" cutoff (defaults to the standard one). */
+  possibleCutoff?: number;
 }
 
 export function secondLook(input: SecondLookInput): SecondLookItem[] {
   const now = input.now ?? new Date().toISOString();
   const windowDays = input.windowDays ?? 90;
+  const cutoff = input.possibleCutoff ?? BANDS.possible;
   const decisions = new Map(input.decisions.map((d) => [`${d.profileId}|${d.opportunityId}`, d]));
   const items: SecondLookItem[] = [];
 
@@ -62,13 +65,13 @@ export function secondLook(input: SecondLookInput): SecondLookItem[] {
           note: `Rated ${m.band} (${m.score}) but passed${d.reason ? `: ${d.reason}` : ""}`,
         });
       }
-    } else if (!d && m.band === "weak" && m.score >= BANDS.possible - NEAR_MISS_MARGIN) {
+    } else if (!d && m.band === "weak" && m.score >= cutoff - NEAR_MISS_MARGIN) {
       items.push({
         opportunity: opp,
         match: m,
         decision: null,
         why: "near_miss",
-        note: `Scored ${m.score}, just under the ${BANDS.possible} cutoff`,
+        note: `Scored ${m.score}, just under the ${cutoff} cutoff`,
       });
     }
   }
