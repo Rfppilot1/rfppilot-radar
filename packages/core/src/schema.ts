@@ -72,6 +72,14 @@ export const Provenance = z.object({
   contentHash: z.string().regex(/^[a-f0-9]{64}$/),
   /** Short reference to the documented collection basis in docs/SOURCES.md. */
   basis: z.string().min(1),
+  /**
+   * For sources read as a list plus a per-record detail call: the hash of the list entry alone, so a run can
+   * skip the detail call when the list entry is unchanged. `contentHash` then covers list and detail together.
+   */
+  listHash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
 });
 export type Provenance = z.infer<typeof Provenance>;
 

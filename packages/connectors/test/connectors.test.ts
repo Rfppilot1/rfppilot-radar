@@ -125,7 +125,9 @@ describe("Texas ESBD", () => {
 
     // Second run: both postings are already stored with detail and unchanged, so no detail calls.
     urls.length = 0;
-    const known = new Map(first.opportunities.map((x) => [x.id, x.provenance.contentHash] as const));
+    const known = new Map(first.opportunities.map((x) => [x.id, x.provenance.listHash!] as const));
+    // The stored version must differ from a list-only copy, or the detail would never be saved.
+    expect(o.provenance.contentHash).not.toBe(o.provenance.listHash);
     const second = await new TxEsbdConnector({ http, now: () => AT, details: { known } }).fetch();
     expect(urls.filter((u) => u.includes("ESBD.Details"))).toHaveLength(0);
     expect(second.partialIds).toEqual(first.opportunities.map((x) => x.id));

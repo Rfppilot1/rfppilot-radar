@@ -157,7 +157,15 @@ export function normalizeTxEsbd(raw: unknown, fetchedAt: string, detailRaw?: unk
       /addendum/i.test(l.statusName) ||
       documents.some((d) => /addend/i.test(`${d.filename}`)),
     keyDates: extractKeyDates(description, { now: fetchedAt }),
-    provenance: { source: "tx-esbd", sourceUrl, fetchedAt, contentHash: contentHash(l), basis: "tx-esbd" },
+    provenance: {
+      source: "tx-esbd",
+      sourceUrl,
+      fetchedAt,
+      // With detail, the hash covers both, so a description or attachment change is stored as a new version.
+      contentHash: detail ? contentHash({ list: l, detail: detailRaw }) : contentHash(l),
+      listHash: contentHash(l),
+      basis: "tx-esbd",
+    },
   });
 }
 
@@ -176,7 +184,7 @@ export interface TxEsbdOptions {
     /** Upper bound on detail requests per run. */
     max?: number;
     /**
-     * Content hashes of records already stored WITH detail. A posting whose list entry is unchanged is not
+     * List hashes (`provenance.listHash`) of records already stored WITH detail. A posting whose list entry is unchanged is not
      * re-fetched; it is reported as partial so the stored, fuller copy is kept.
      */
     known?: ReadonlyMap<string, string>;
@@ -265,7 +273,7 @@ export class TxEsbdConnector implements SourceConnector {
     for (let i = 0; i < run.opportunities.length; i++) {
       const opp = run.opportunities[i]!;
       if (opp.status !== "open") continue;
-      if (d.known?.get(opp.id) === opp.provenance.contentHash || budget <= 0) {
+      if (d.known?.get(opp.id) === opp.provenance.listHash || budget <= 0) {
         run.partialIds.push(opp.id);
         continue;
       }
