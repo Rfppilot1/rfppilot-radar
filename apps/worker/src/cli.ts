@@ -301,7 +301,12 @@ async function main() {
         // New = since the last delivered digest, so a skipped or late run loses nothing and a second run
         // the same day repeats nothing. The first digest for a profile lists everything current.
         const last = await repo.lastDigestAt(p.tenantId, p.id);
-        const since = last ?? "1970-01-01T00:00:00.000Z";
+        // RADAR_DIGEST_REPLAY_UNTIL (ISO time) re-sends the full current list on runs before that time, for
+        // previewing a template change. It expires on its own, so a forgotten setting cannot spam anyone.
+        const replay = (process.env.RADAR_DIGEST_REPLAY_UNTIL ?? "") > now;
+        const since = replay ? "1970-01-01T00:00:00.000Z" : (last ?? "1970-01-01T00:00:00.000Z");
+        if (replay)
+          log({ event: "digest_replay", profile: p.id, until: process.env.RADAR_DIGEST_REPLAY_UNTIL });
         const d = await buildDigest(repo, p.tenantId, p.id, { since, now });
         if (values.signals !== "off") {
           // FEMA signals are a bonus; a failure here never blocks the digest.

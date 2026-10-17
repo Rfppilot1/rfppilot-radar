@@ -26,19 +26,20 @@ Railway no longer accepts config files for new services, so each service is conf
 Set on **both** services (Railway → service → Variables). Use Railway's reference syntax for the database so the
 password never appears in this repo.
 
-| Variable                  | api | worker | Value                                                                                              |
-| ------------------------- | --- | ------ | -------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`            | ✓   | ✓      | `${{Postgres.DATABASE_URL}}`                                                                       |
-| `RADAR_API_KEYS`          | ✓   |        | `isf:<long random key>` (generate with `openssl rand -hex 24`)                                     |
-| `SAM_API_KEY`             |     | ✓      | SAM.gov → Account Details → Public API Key                                                         |
-| `ANTHROPIC_API_KEY`       |     | ✓      | console.anthropic.com → API Keys (enables the Claude reviewer)                                     |
-| `RADAR_MAX_REVIEWS`       |     | ✓      | `50` (cap on reviewer calls per run)                                                               |
-| `RESEND_API_KEY`          |     | ✓      | resend.com → API Keys                                                                              |
-| `RADAR_EMAIL_FROM`        |     | ✓      | `Radar <radar@rfppilot.com>` (domain verified in Resend)                                           |
-| `RADAR_UNSUBSCRIBE_EMAIL` |     | ✓      | A mailbox you read, e.g. `radar-unsubscribe@rfppilot.com` (honor requests within 10 business days) |
-| `RADAR_RECIPIENTS`        |     | ✓      | `isf/isf-main=ben@rfppilot.com` at first; add Monica's address after the first clean digests       |
-| `RADAR_SAM_STATES`        |     | ✓      | `FL,TX`                                                                                            |
-| `RADAR_USER_AGENT`        |     | ✓      | `RFPPilotRadar/0.1 (+https://rfppilot.com; ben@rfppilot.com)`                                      |
+| Variable                    | api | worker | Value                                                                                                                  |
+| --------------------------- | --- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`              | ✓   | ✓      | `${{Postgres.DATABASE_URL}}`                                                                                           |
+| `RADAR_API_KEYS`            | ✓   |        | `isf:<long random key>` (generate with `openssl rand -hex 24`)                                                         |
+| `SAM_API_KEY`               |     | ✓      | SAM.gov → Account Details → Public API Key                                                                             |
+| `ANTHROPIC_API_KEY`         |     | ✓      | console.anthropic.com → API Keys (enables the Claude reviewer)                                                         |
+| `RADAR_MAX_REVIEWS`         |     | ✓      | `50` (cap on reviewer calls per run)                                                                                   |
+| `RESEND_API_KEY`            |     | ✓      | resend.com → API Keys                                                                                                  |
+| `RADAR_EMAIL_FROM`          |     | ✓      | `Radar <radar@rfppilot.com>` (domain verified in Resend)                                                               |
+| `RADAR_UNSUBSCRIBE_EMAIL`   |     | ✓      | A mailbox you read, e.g. `radar-unsubscribe@rfppilot.com` (honor requests within 10 business days)                     |
+| `RADAR_RECIPIENTS`          |     | ✓      | `isf/isf-main=ben@rfppilot.com` at first; add Monica's address after the first clean digests                           |
+| `RADAR_DIGEST_REPLAY_UNTIL` |     | ✓      | Optional. An ISO time; runs before it re-send the full current list (to preview a template change). Expires on its own |
+| `RADAR_SAM_STATES`          |     | ✓      | `FL,TX`                                                                                                                |
+| `RADAR_USER_AGENT`          |     | ✓      | `RFPPilotRadar/0.1 (+https://rfppilot.com; ben@rfppilot.com)`                                                          |
 
 Never paste these values into chat, email, issues or code.
 

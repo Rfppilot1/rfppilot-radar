@@ -7,6 +7,8 @@
 - Score pills and card edges are colored by fit band (green strong, amber possible), and every card explains its
   score: a headline ("Strong fit, 74 of 100"), how far it sits from Strong, and the signed points behind it, largest
   first, with the AI reviewer's one-sentence rationale in plain words.
+- `RADAR_DIGEST_REPLAY_UNTIL`: an ISO time before which digests re-send the full current list, for previewing a
+  template change; it expires on its own.
 - SAM.gov 404 (documented as "No Data found", often with an empty body) is treated as an empty result; HTTP error bodies are logged; the Claude reviewer has
   more output headroom and reports what it got back when it cannot parse a verdict.
 
