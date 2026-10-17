@@ -267,6 +267,8 @@ export interface FlMfmpOptions {
   /** Upper bound on detail requests per run; biddable ads are enriched first, in portal order. */
   maxDetails?: number;
   now?: () => string;
+  /** Called as detail requests progress (every 25 and at the end), for run logs. */
+  onProgress?: (p: { listed: number; detailsDone: number }) => void;
 }
 
 export class FlMfmpConnector implements SourceConnector {
@@ -288,6 +290,8 @@ export class FlMfmpConnector implements SourceConnector {
       partialIds: [],
     };
     let detailBudget = this.opts.maxDetails ?? 1000;
+    let detailsDone = 0;
+    this.opts.onProgress?.({ listed: raw.length, detailsDone });
     for (const r of raw) {
       try {
         const ad = FlAd.parse(r);
@@ -306,6 +310,7 @@ export class FlMfmpConnector implements SourceConnector {
               error: `detail: ${(err as Error).message.slice(0, 250)}`,
             });
           }
+          if (++detailsDone % 25 === 0) this.opts.onProgress?.({ listed: raw.length, detailsDone });
         }
         const opp = normalizeFlAd(r, fetchedAt, detail);
         if (wantsDetail && detail === null) run.partialIds!.push(opp.id);
@@ -319,6 +324,7 @@ export class FlMfmpConnector implements SourceConnector {
         });
       }
     }
+    this.opts.onProgress?.({ listed: raw.length, detailsDone });
     // Complete only if nothing was cut off, no date filter applied, and every list row parsed (detail
     // failures alone don't count: those records are still seen, just kept at their stored version).
     run.complete =

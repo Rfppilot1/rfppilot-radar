@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { writeSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import {
@@ -67,7 +68,13 @@ function connectors(sources: SourceId[]): SourceConnector[] {
   const out: SourceConnector[] = [];
   for (const s of sources) {
     if (s === "tx-esbd") out.push(new TxEsbdConnector({ http }));
-    else if (s === "fl-mfmp") out.push(new FlMfmpConnector({ transport: new HttpFlTransport(http) }));
+    else if (s === "fl-mfmp")
+      out.push(
+        new FlMfmpConnector({
+          transport: new HttpFlTransport(http),
+          onProgress: (p) => log({ event: "progress", source: s, ...p }),
+        }),
+      );
     else if (s === "sam-gov") {
       // Federal coverage is optional: without a key the run continues with the state sources.
       if (!process.env.SAM_API_KEY) {
@@ -96,6 +103,7 @@ async function ingest(repo: Repository, sources: SourceId[], max?: number) {
   for (const c of connectors(sources)) {
     const started = new Date().toISOString();
     try {
+      log({ event: "ingest_start", source: c.id, rssMb: Math.round(process.memoryUsage().rss / 1e6) });
       const run = await c.fetch({ maxRecords: max });
       const r = await ingestRun(repo, run, started);
       log({
@@ -183,8 +191,20 @@ async function scoreAll(repo: Repository) {
 }
 
 function log(o: Record<string, unknown>) {
-  process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), ...o })}\n`);
+  // Synchronous write, so a line is never lost if the process exits or is killed right after.
+  writeSync(1, `${JSON.stringify({ at: new Date().toISOString(), ...o })}\n`);
 }
+
+// Leave a trace for anything that ends the run outside the normal error path.
+for (const sig of ["SIGTERM", "SIGINT"] as const)
+  process.on(sig, () => {
+    log({ event: "signal", signal: sig, rssMb: Math.round(process.memoryUsage().rss / 1e6) });
+    process.exit(128 + (sig === "SIGTERM" ? 15 : 2));
+  });
+process.on("unhandledRejection", (err) => {
+  log({ event: "fatal", error: `unhandled rejection: ${(err as Error)?.message ?? String(err)}` });
+  process.exit(1);
+});
 
 async function main() {
   const { positionals, values } = parseArgs({
