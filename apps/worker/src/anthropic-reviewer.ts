@@ -32,16 +32,23 @@ export class AnthropicReviewer implements RelevanceReviewer {
       signal: AbortSignal.timeout(30_000),
       body: JSON.stringify({
         model: this.model,
-        max_tokens: 200,
+        max_tokens: 1024,
         messages: [{ role: "user", content: reviewPrompt(opp, profile) }],
       }),
     });
-    if (!res.ok) throw new Error(`Anthropic API ${res.status}`);
-    const body = (await res.json()) as { content?: { type: string; text?: string }[] };
+    if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const body = (await res.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string };
     const text = (body.content ?? [])
       .filter((c) => c.type === "text")
       .map((c) => c.text ?? "")
       .join("");
-    return parseVerdict(text, this.id);
+    try {
+      return parseVerdict(text, this.id);
+    } catch (err) {
+      const blocks = (body.content ?? []).map((c) => c.type).join(",") || "none";
+      throw new Error(
+        `${(err as Error).message} (stop_reason=${body.stop_reason ?? "?"}, blocks=${blocks}, text=${JSON.stringify(text.slice(0, 120))})`,
+      );
+    }
   }
 }

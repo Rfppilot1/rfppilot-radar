@@ -130,7 +130,12 @@ async function ingest(repo: Repository, sources: SourceId[], max?: number) {
         complete: false,
         error: (err as Error).message.slice(0, 500),
       });
-      log({ event: "ingest_failed", source: c.id, error: (err as Error).message });
+      log({
+        event: "ingest_failed",
+        source: c.id,
+        error: (err as Error).message,
+        detail: (err as { body?: string }).body?.slice(0, 300),
+      });
     }
   }
 }

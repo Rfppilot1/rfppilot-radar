@@ -1,6 +1,6 @@
 import { Opportunity, type ClassificationCode, type NoticeKind } from "@radar/core";
 import { z } from "zod";
-import type { HttpClient } from "./http.js";
+import { HttpError, type HttpClient } from "./http.js";
 import {
   kindFromText,
   opportunityId,
@@ -182,9 +182,14 @@ export class SamGovConnector implements SourceConnector {
           });
           if (ncode) q.set("ncode", ncode);
           for (const p of this.opts.ptypes ?? ["o", "k", "p", "r"]) q.append("ptype", p);
-          const res = await this.opts.http.json<{ totalRecords?: number; opportunitiesData?: unknown[] }>(
-            `${SAM_SEARCH}?${q}`,
-          );
+          let res: { totalRecords?: number; opportunitiesData?: unknown[] };
+          try {
+            res = await this.opts.http.json(`${SAM_SEARCH}?${q}`);
+          } catch (err) {
+            // SAM answers an empty result with 404 "No Data found" rather than an empty list.
+            if (err instanceof HttpError && err.status === 404 && /no data/i.test(err.body)) break;
+            throw err;
+          }
           const rows = res.opportunitiesData ?? [];
           for (const r of rows) {
             try {
