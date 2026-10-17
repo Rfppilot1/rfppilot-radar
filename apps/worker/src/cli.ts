@@ -68,7 +68,12 @@ function connectors(sources: SourceId[]): SourceConnector[] {
   for (const s of sources) {
     if (s === "tx-esbd") out.push(new TxEsbdConnector({ http }));
     else if (s === "fl-mfmp") out.push(new FlMfmpConnector({ transport: new HttpFlTransport(http) }));
-    else if (s === "sam-gov")
+    else if (s === "sam-gov") {
+      // Federal coverage is optional: without a key the run continues with the state sources.
+      if (!process.env.SAM_API_KEY) {
+        log({ event: "source_skipped", source: s, reason: "SAM_API_KEY is not set" });
+        continue;
+      }
       out.push(
         new SamGovConnector({
           http,
@@ -76,6 +81,7 @@ function connectors(sources: SourceId[]): SourceConnector[] {
           states: (process.env.RADAR_SAM_STATES ?? "FL,TX").split(","),
         }),
       );
+    }
   }
   return out;
 }
