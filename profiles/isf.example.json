@@ -4,7 +4,7 @@
   "name": "ISF, Inc. (draft profile, built from ISF's public record; ISF to confirm)",
   "states": ["FL", "TX"],
   "includeFederal": true,
-  "minDaysToRespond": 10,
+  "minDaysToRespond": 7,
   "codes": [
     {
       "system": "NAICS",
@@ -168,7 +168,7 @@
     },
     {
       "phrase": "project management",
-      "weight": 0.7
+      "weight": 1
     },
     {
       "phrase": "management consulting",
@@ -200,6 +200,22 @@
     },
     {
       "phrase": "performance audit",
+      "weight": 0.6
+    },
+    {
+      "phrase": "program management",
+      "weight": 0.9
+    },
+    {
+      "phrase": "project management office",
+      "weight": 0.9
+    },
+    {
+      "phrase": "PMO",
+      "weight": 0.9
+    },
+    {
+      "phrase": "consulting services",
       "weight": 0.6
     }
   ],
