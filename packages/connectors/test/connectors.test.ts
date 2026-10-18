@@ -117,6 +117,7 @@ describe("Texas ESBD", () => {
     expect(o.documents[0]!.url).toMatch(/^https:\/\/www\.txsmartbuy\.gov\/core\/media\//);
     expect(o.hasAddendum).toBe(true);
     expect(o.contact?.email).toBe("pat.buyer@example.gov");
+    expect(o.estimatedValue).toEqual({ amount: 1250000, basis: "agency_estimate", text: null });
     expect(o.keyDates.map((k) => [k.kind, k.date, k.time, k.mandatory])).toEqual([
       ["pre_bid", "2026-10-29", "10:00 AM", true],
       ["questions_due", "2026-11-05", null, null],
@@ -216,6 +217,20 @@ describe("SAM.gov", () => {
       });
     const run = await mk('{"error":{"code":"404","message":"No Data found"}}').fetch();
     expect(run.opportunities).toHaveLength(0);
+    const seen: { state: string; body: string }[] = [];
+    await new SamGovConnector({
+      http: new HttpClient({
+        userAgent: "t",
+        minIntervalMs: 0,
+        maxRetries: 0,
+        fetchImpl: (async () => new Response("No Data found", { status: 404 })) as unknown as typeof fetch,
+      }),
+      apiKey: "secret-key",
+      states: ["TX"],
+      onNoData: (q) => seen.push(q),
+    }).fetch();
+    expect(seen).toMatchObject([{ state: "TX", body: "No Data found" }]);
+    expect(JSON.stringify(seen)).not.toContain("secret-key");
     expect((await mk("").fetch()).opportunities).toHaveLength(0);
     await expect(mk('{"error":{"code":"API_KEY_INVALID"}}', 403).fetch()).rejects.toThrow(/HTTP 403/);
   });
@@ -240,7 +255,9 @@ describe("SAM.gov", () => {
     const q = new URL(urls[0]!).searchParams;
     expect(q.get("postedTo")).toBe("10/15/2026");
     expect(q.get("postedFrom")).toBe("10/01/2026");
-    expect(q.getAll("ptype")).toEqual(["o", "k", "p", "r"]);
+    // No type filter by default: several repeated ptype values can make SAM match nothing.
+    expect(q.getAll("ptype")).toEqual([]);
+    expect(q.get("state")).toBe("FL");
     expect(run.opportunities).toHaveLength(2); // deduplicated across the two state queries
   });
 });

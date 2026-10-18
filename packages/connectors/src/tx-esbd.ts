@@ -1,4 +1,11 @@
-import { Opportunity, extractKeyDates, type ClassificationCode, type OpportunityStatus } from "@radar/core";
+import {
+  Opportunity,
+  extractKeyDates,
+  parseMoney,
+  valueFromText,
+  type ClassificationCode,
+  type OpportunityStatus,
+} from "@radar/core";
 import { z } from "zod";
 import type { HttpClient } from "./http.js";
 import {
@@ -21,6 +28,8 @@ import { clean, contentHash, zonedToUtcIso } from "./util.js";
 export const TX_ESBD_BASE = "https://www.txsmartbuy.gov";
 export const TX_ESBD_SERVICE = `${TX_ESBD_BASE}/app/extensions/CPA/CPAMain/1.0.0/services/ESBD.Service.ss?c=852252&n=2`;
 export const TX_TZ = "America/Chicago";
+/** Bump when the detail parser reads new fields, so stored postings are re-read once. 2 = estimated value. */
+export const TX_DETAIL_VERSION = 2;
 
 export const TxEsbdLine = z.object({
   internalid: z.string(),
@@ -62,6 +71,8 @@ export const TxEsbdDetail = z
     contactName: z.string().nullable().optional(),
     contactNumber: z.string().nullable().optional(),
     contactEmail: z.string().nullable().optional(),
+    /** The agency's estimated value, as a money string ("59,500.00"); empty or "0.00" when not given. */
+    value: z.union([z.string(), z.number()]).nullable().optional(),
     attachments: z
       .array(
         z.object({
@@ -157,13 +168,18 @@ export function normalizeTxEsbd(raw: unknown, fetchedAt: string, detailRaw?: unk
       /addendum/i.test(l.statusName) ||
       documents.some((d) => /addend/i.test(`${d.filename}`)),
     keyDates: extractKeyDates(description, { now: fetchedAt }),
+    estimatedValue: estimatedValue(detail?.value, description),
     provenance: {
       source: "tx-esbd",
       sourceUrl,
       fetchedAt,
       // With detail, the hash covers both, so a description or attachment change is stored as a new version.
-      contentHash: detail ? contentHash({ list: l, detail: detailRaw }) : contentHash(l),
+      // The parser version is part of the hash, so records re-read by a newer parser are stored again.
+      contentHash: detail
+        ? contentHash({ list: l, detail: detailRaw, v: TX_DETAIL_VERSION })
+        : contentHash(l),
       listHash: contentHash(l),
+      detailVersion: detail ? TX_DETAIL_VERSION : undefined,
       basis: "tx-esbd",
     },
   });
@@ -294,4 +310,9 @@ export class TxEsbdConnector implements SourceConnector {
     }
     d.onProgress?.({ listed: run.opportunities.length, detailsDone: done });
   }
+}
+
+function estimatedValue(field: string | number | null | undefined, description: string | null) {
+  const amount = parseMoney(field ?? null);
+  return amount ? { amount, basis: "agency_estimate" as const, text: null } : valueFromText(description);
 }

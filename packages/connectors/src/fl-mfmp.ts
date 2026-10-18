@@ -1,6 +1,7 @@
 import {
   Opportunity,
   extractKeyDates,
+  valueFromText,
   isIntel,
   type ClassificationCode,
   type DocumentRef,
@@ -84,6 +85,9 @@ export const FlDetail = z
   })
   .passthrough();
 export type FlDetail = z.infer<typeof FlDetail>;
+
+/** Bump when the parser reads new fields from the same payloads. 2 = estimated value from the description. */
+export const FL_PARSE_VERSION = 2;
 
 /** Ad types exactly as listed in the portal's "Ad Type" filter. */
 export const FL_AD_TYPES: Record<string, NoticeKind> = {
@@ -235,11 +239,18 @@ export function normalizeFlAd(raw: unknown, fetchedAt: string, detailRaw?: unkno
     hasAddendum:
       (ad.version ?? 1) > 1 || documents.some((d) => /addend/i.test(`${d.description} ${d.filename}`)),
     keyDates,
+    // The portal has no value field; a stated value is read conservatively from the description.
+    estimatedValue: valueFromText(description),
     provenance: {
       source: "fl-mfmp",
       sourceUrl: `${FL_VIP_BASE}/search/bids/detail/${ad.advertisementId}`,
       fetchedAt,
-      contentHash: contentHash({ list: hashable(raw), detail: detail ? hashable(detailRaw) : null }),
+      // FL_PARSE_VERSION is part of the hash, so a parser that reads new fields stores every record once more.
+      contentHash: contentHash({
+        list: hashable(raw),
+        detail: detail ? hashable(detailRaw) : null,
+        v: FL_PARSE_VERSION,
+      }),
       basis: "fl-mfmp",
     },
   });

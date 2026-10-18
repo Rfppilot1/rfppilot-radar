@@ -134,12 +134,23 @@ export interface SamOptions {
   apiKey: string;
   /** Place-of-performance states to query (one request series per state). */
   states: string[];
-  /** Procurement types: o = solicitation, k = combined synopsis/solicitation, p = presolicitation, r = sources sought. */
+  /**
+   * Procurement type filter (o = solicitation, k = combined synopsis/solicitation, p = presolicitation,
+   * r = sources sought). Sent only when exactly one is given; default is no filter.
+   */
   ptypes?: string[];
   /** NAICS codes to restrict the query; empty means all. */
   naics?: string[];
   lookbackDays?: number;
   now?: () => string;
+  /** Called when SAM answers "no data" for a query, with the query (never the key), for run logs. */
+  onNoData?: (q: {
+    state: string;
+    ncode: string | null;
+    postedFrom: string;
+    postedTo: string;
+    body: string;
+  }) => void;
 }
 
 const mmddyyyy = (d: Date) =>
@@ -181,14 +192,26 @@ export class SamGovConnector implements SourceConnector {
             state,
           });
           if (ncode) q.set("ncode", ncode);
-          for (const p of this.opts.ptypes ?? ["o", "k", "p", "r"]) q.append("ptype", p);
+          // Only one ptype per request is documented; several repeated values can match nothing at all. A
+          // type filter is sent only when exactly one is configured; otherwise every type comes back and the
+          // scorer's notice-type lanes (bid vs intel) sort them.
+          if (this.opts.ptypes?.length === 1) q.set("ptype", this.opts.ptypes[0]!);
           let res: { totalRecords?: number; opportunitiesData?: unknown[] };
           try {
             res = await this.opts.http.json(`${SAM_SEARCH}?${q}`);
           } catch (err) {
             // SAM documents 404 as "No Data found" (often with an empty body) rather than an empty list.
             // A bad key is 403 and a malformed query 400, so those still fail the run.
-            if (err instanceof HttpError && err.status === 404) break;
+            if (err instanceof HttpError && err.status === 404) {
+              this.opts.onNoData?.({
+                state,
+                ncode: ncode ?? null,
+                postedFrom: q.get("postedFrom")!,
+                postedTo: q.get("postedTo")!,
+                body: err.body.slice(0, 200),
+              });
+              break;
+            }
             throw err;
           }
           const rows = res.opportunitiesData ?? [];

@@ -31,6 +31,7 @@ const opp: Opportunity = {
   version: null,
   hasAddendum: false,
   keyDates: [],
+  estimatedValue: null,
   provenance: {
     source: "tx-esbd",
     sourceUrl: "https://www.txsmartbuy.gov/esbd/529-27-0001",

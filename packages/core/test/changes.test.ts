@@ -117,3 +117,20 @@ describe("explanations", () => {
     expect(clipSentence("Short.", 120)).toBe("Short.");
   });
 });
+
+describe("estimated value", () => {
+  it("reads a stated value conservatively and formats it", async () => {
+    const { valueFromText, formatValue, parseMoney } = await import("../src/index.js");
+    expect(parseMoney("59,500.00")).toBe(59500);
+    expect(parseMoney("0.00")).toBeNull();
+    const v = valueFromText(
+      "Proposers must carry $1,000,000 in general liability insurance. The estimated contract value is $2.5 million over three years.",
+    );
+    expect(v).toMatchObject({ amount: 2_500_000, basis: "posting_text" });
+    expect(v?.text).toMatch(/^The estimated contract value/);
+    expect(formatValue(v!)).toBe("≈$2.5M");
+    expect(formatValue({ amount: 59500, basis: "agency_estimate", text: null })).toBe("$59.5K");
+    expect(valueFromText("A bid bond of $50,000 is required.")).toBeNull();
+    expect(valueFromText("Hourly rates up to $150 per hour.")).toBeNull();
+  });
+});

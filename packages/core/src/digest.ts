@@ -3,6 +3,7 @@ import type { Match, Opportunity, Reason } from "./schema.js";
 import { BANDS } from "./scoring.js";
 import { changeLine, type OpportunityChange } from "./changes.js";
 import { keyDateLabel, upcomingKeyDates } from "./keydates.js";
+import { formatValue } from "./value.js";
 
 export interface DigestEntry {
   opportunity: Opportunity;
@@ -78,6 +79,11 @@ const KIND_LABEL: Record<Opportunity["kind"], string> = {
 };
 const kindText = (o: Opportunity) => o.kindLabel ?? KIND_LABEL[o.kind];
 
+/** Source · buyer · notice type · due date · estimated value (when the posting states one). */
+const metaLine = (o: Opportunity, ref: string) =>
+  `${SOURCE_LABEL[o.source]} · ${o.buyer.name} · ${kindText(o)} · due ${fmtDate(o.dueAt, ref)}` +
+  (o.estimatedValue ? ` · Est. ${formatValue(o.estimatedValue)}` : "");
+
 const SOURCE_LABEL: Record<Opportunity["source"], string> = {
   "sam-gov": "Federal",
   "tx-esbd": "Texas",
@@ -116,7 +122,7 @@ export function renderDigestText(d: Digest, maxPerSection = 5): string {
     lines.push("", `${title} (${rows.length})`);
     for (const { opportunity: o, match: m } of rows.slice(0, maxPerSection)) {
       lines.push(
-        `- ${o.title} | ${o.buyer.name} | due ${fmtDate(o.dueAt, d.generatedAt)} | fit ${Math.round(m.score)}`,
+        `- ${o.title} | ${o.buyer.name} | due ${fmtDate(o.dueAt, d.generatedAt)}${o.estimatedValue ? ` | est. ${formatValue(o.estimatedValue)}` : ""} | fit ${Math.round(m.score)}`,
       );
       const kd = upcomingKeyDates(o.keyDates ?? [], d.generatedAt, o.dueAt);
       if (kd.length) lines.push(`  ${kd.map(keyDateLabel).join(" · ")}`);
@@ -153,7 +159,7 @@ export function renderDigestMarkdown(d: Digest): string {
     const x = explain(m, d.bands ?? BANDS);
     return [
       `**[${o.title}](${o.provenance.sourceUrl})**`,
-      `${SOURCE_LABEL[o.source]} · ${o.buyer.name} · ${kindText(o)} · due ${fmtDate(o.dueAt, d.generatedAt)}`,
+      metaLine(o, d.generatedAt),
       upcomingKeyDates(o.keyDates ?? [], d.generatedAt, o.dueAt)
         .map((k) => `**${keyDateLabel(k)}**`)
         .join(" · "),
@@ -230,7 +236,7 @@ export function renderDigestHtml(d: Digest): string {
         card(
           o.title,
           o.provenance.sourceUrl,
-          `${SOURCE_LABEL[o.source]} · ${o.buyer.name} · ${kindText(o)} · due ${fmtDate(o.dueAt, d.generatedAt)}`,
+          metaLine(o, d.generatedAt),
           explainHtml(m, d.bands ?? BANDS),
           Math.round(m.score),
           m.band,
@@ -244,7 +250,7 @@ export function renderDigestHtml(d: Digest): string {
         card(
           o.title,
           o.provenance.sourceUrl,
-          `${SOURCE_LABEL[o.source]} · ${o.buyer.name} · ${kindText(o)} · due ${fmtDate(o.dueAt, d.generatedAt)}`,
+          metaLine(o, d.generatedAt),
           changes
             .map(
               (c) =>

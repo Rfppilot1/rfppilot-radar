@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1 (2026-10-18)
+
+- **Estimated contract value** on every card that states one: Texas from the agency's estimate field
+  ("Est. $59.5K"); Florida (which has no value field) and Texas postings without one from the posting's own
+  words, read conservatively and marked "≈". Bonds, insurance, fees and hourly rates are never read as values.
+  Parser versions are now part of the content hash, so the next run re-reads and stores every record once.
+- **SAM.gov:** stopped sending four repeated `ptype` values in one query (only one is documented, and the
+  combination can match nothing); all notice types now come back and the scorer's lanes sort them. A
+  `sam_no_data` log line records any query SAM answers with "No Data found" (never the key).
+- ISF profile tuned from Monica's feedback: project management at full weight; program management, PMO and
+  consulting services added; the short-deadline penalty applies under 7 days.
+
 ## 0.4.0 (2026-10-17)
 
 - **Today in brief.** Two or three plain sentences at the top of the email, written by Claude from the digest's

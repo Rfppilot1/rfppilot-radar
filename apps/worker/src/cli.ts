@@ -8,6 +8,7 @@ import {
   HttpFlTransport,
   SamGovConnector,
   TxEsbdConnector,
+  TX_DETAIL_VERSION,
   normalizeFlAd,
   normalizeSam,
   normalizeTxEsbd,
@@ -100,6 +101,7 @@ function connectors(
           http,
           apiKey: process.env.SAM_API_KEY ?? "",
           states: (process.env.RADAR_SAM_STATES ?? "FL,TX").split(","),
+          onNoData: (q) => log({ event: "sam_no_data", ...q }),
         }),
       );
     }
@@ -118,7 +120,7 @@ async function txKnown(repo: Repository): Promise<Map<string, string>> {
   const stored = await repo.listOpportunities({ sources: ["tx-esbd"], openOnly: true, limit: 20_000 });
   return new Map(
     stored
-      .filter((o) => (o.description !== null || o.documents.length > 0) && o.provenance.listHash)
+      .filter((o) => o.provenance.detailVersion === TX_DETAIL_VERSION && o.provenance.listHash)
       .map((o) => [o.id, o.provenance.listHash!] as const),
   );
 }

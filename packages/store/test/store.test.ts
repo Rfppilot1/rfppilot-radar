@@ -36,6 +36,7 @@ function opp(id: string, over: Partial<Opportunity> = {}): Opportunity {
     version: null,
     hasAddendum: false,
     keyDates: [],
+    estimatedValue: null,
     provenance: {
       source: "tx-esbd",
       sourceUrl: `https://www.txsmartbuy.gov/esbd/RFP-${id}`,

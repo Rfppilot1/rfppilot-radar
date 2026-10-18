@@ -2,6 +2,7 @@ import { changeLine } from "./changes.js";
 import type { Digest, DigestEntry } from "./digest.js";
 import { keyDateLabel, upcomingKeyDates } from "./keydates.js";
 import { clipSentence } from "./review-ai.js";
+import { formatValue } from "./value.js";
 
 /**
  * The facts a digest summary may draw on, and nothing else: counts, what changed, the top new matches and
@@ -20,7 +21,7 @@ export function summaryFacts(d: Digest, maxItems = 6): string {
     const kd = upcomingKeyDates(e.opportunity.keyDates ?? [], d.generatedAt, e.opportunity.dueAt).map(
       keyDateLabel,
     );
-    return `- "${e.opportunity.title}" | ${e.opportunity.buyer.name} | ${e.opportunity.state ?? ""} | fit ${Math.round(e.match.score)} (${e.match.band}) | due ${due(e.opportunity.dueAt)}${kd.length ? ` | ${kd.join("; ")}` : ""}`;
+    return `- "${e.opportunity.title}" | ${e.opportunity.buyer.name} | ${e.opportunity.state ?? ""} | fit ${Math.round(e.match.score)} (${e.match.band}) | due ${due(e.opportunity.dueAt)}${e.opportunity.estimatedValue ? ` | estimated value ${formatValue(e.opportunity.estimatedValue)}` : ""}${kd.length ? ` | ${kd.join("; ")}` : ""}`;
   };
   const lines: string[] = [];
   if (d.glance)

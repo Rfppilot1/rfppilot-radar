@@ -80,6 +80,8 @@ export const Provenance = z.object({
     .string()
     .regex(/^[a-f0-9]{64}$/)
     .optional(),
+  /** Version of the detail parser that produced this record; bumping it makes the next run re-read detail. */
+  detailVersion: z.number().int().optional(),
 });
 export type Provenance = z.infer<typeof Provenance>;
 
@@ -153,6 +155,18 @@ export const Opportunity = z.object({
   hasAddendum: z.boolean(),
   /** Pre-bid conferences, site visits, question deadlines and bid openings found in the posting. */
   keyDates: z.array(KeyDate).default([]),
+  /**
+   * The buyer's stated contract value. `agency_estimate` comes from a structured field the source publishes;
+   * `posting_text` was read from the posting's own words, with the sentence kept in `text` for checking.
+   */
+  estimatedValue: z
+    .object({
+      amount: z.number().positive(),
+      basis: z.enum(["agency_estimate", "posting_text"]),
+      text: z.string().max(240).nullable(),
+    })
+    .nullable()
+    .default(null),
   provenance: Provenance,
 });
 export type Opportunity = z.infer<typeof Opportunity>;
