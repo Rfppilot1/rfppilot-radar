@@ -102,6 +102,7 @@ function connectors(
           apiKey: process.env.SAM_API_KEY ?? "",
           states: (process.env.RADAR_SAM_STATES ?? "FL,TX").split(","),
           onNoData: (q) => log({ event: "sam_no_data", ...q }),
+          onProbe: (p) => log({ event: "sam_probe", ...p }),
         }),
       );
     }

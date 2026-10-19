@@ -201,6 +201,21 @@ describe.each(impls)("%s repository", (_name, make) => {
     expect(d.newMatches.map((e) => e.opportunity.id)).toEqual(["tx-esbd:5"]);
   });
 
+  it("lists strong matches from earlier emails that are still open and not closing this week", async () => {
+    const p = profile();
+    await repo.upsertProfile(p, NOW);
+    await repo.upsertOpportunities([opp("1")], NOW);
+    await rescoreProfile(repo, p, NOW);
+    const m = await repo.getMatch("isf", "isf-main", "tx-esbd:1");
+    const later = "2026-10-17T14:00:00.000Z";
+    const d = await buildDigest(repo, "isf", "isf-main", { since: "2026-10-16T00:00:00.000Z", now: later });
+    expect(d.newMatches).toEqual([]);
+    const listed = (d.strongOpen ?? []).map((e) => e.opportunity.id);
+    const closing = d.closingSoon.map((e) => e.opportunity.id);
+    expect({ band: m?.band, closing, listed }).toEqual({ band: "strong", closing: [], listed: ["tx-esbd:1"] });
+    expect(listed.some((id) => closing.includes(id))).toBe(false);
+  });
+
   it("remembers the last delivered digest per tenant profile", async () => {
     await repo.upsertProfile(profile(), NOW);
     expect(await repo.lastDigestAt("isf", "isf-main")).toBeNull();

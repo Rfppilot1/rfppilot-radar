@@ -220,11 +220,26 @@ export async function buildDigest(
     })
     .sort((a, b) => b.match.score - a.match.score);
 
+  const isClosing = (dueAt: string | null) =>
+    dueAt !== null && daysBetween(o.now, dueAt) >= 0 && daysBetween(o.now, dueAt) <= window;
+  const strongOpen = entries(
+    (e) =>
+      e.match.lane === "bid" &&
+      e.match.band === "strong" &&
+      !isNew(e.firstGood) &&
+      notPassed(e.opportunity.id) &&
+      (e.opportunity.dueAt === null || e.opportunity.dueAt >= o.now) &&
+      !isClosing(e.opportunity.dueAt),
+  )
+    .sort((a, b) => b.match.score - a.match.score)
+    .slice(0, 10);
+
   return {
     profileName: profile.name,
     generatedAt: o.now,
     glance,
     changed,
+    strongOpen,
     bands: resolveScoring(profile).bands,
     newMatches: entries(
       (e) =>

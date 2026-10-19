@@ -235,6 +235,32 @@ describe("SAM.gov", () => {
     await expect(mk('{"error":{"code":"API_KEY_INVALID"}}', 403).fetch()).rejects.toThrow(/HTTP 403/);
   });
 
+  it("probes once, without the key in the log, when every SAM query answers no data", async () => {
+    const urls: string[] = [];
+    const probes: { endpoint: string; status: number; totalRecords: number | null }[] = [];
+    await new SamGovConnector({
+      http: new HttpClient({
+        userAgent: "t",
+        minIntervalMs: 0,
+        maxRetries: 0,
+        fetchImpl: (async (url: string) => {
+          urls.push(String(url));
+          if (String(url).includes("/prod/")) return new Response('{"totalRecords":42}', { status: 200 });
+          return new Response("", { status: 404 });
+        }) as unknown as typeof fetch,
+      }),
+      apiKey: "secret-key",
+      states: ["FL", "TX"],
+      onProbe: (p) => probes.push(p),
+    }).fetch();
+    expect(probes).toEqual([
+      { endpoint: "https://api.sam.gov/opportunities/v2/search", status: 404, totalRecords: null, body: "" },
+      { endpoint: "https://api.sam.gov/prod/opportunities/v2/search", status: 200, totalRecords: 42, body: "" },
+    ]);
+    expect(urls.filter((u) => !u.includes("state=")).every((u) => u.includes("limit=1"))).toBe(true);
+    expect(JSON.stringify(probes)).not.toContain("secret-key");
+  });
+
   it("requires an API key and queries each state with the documented parameters", async () => {
     expect(() => new SamGovConnector({ http: {} as HttpClient, apiKey: "", states: ["FL"] })).toThrow(
       /SAM_API_KEY/,

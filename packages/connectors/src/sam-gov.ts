@@ -151,7 +151,16 @@ export interface SamOptions {
     postedTo: string;
     body: string;
   }) => void;
+  /**
+   * Called once per run when every query answered "no data": a minimal unfiltered request (last 3 days, one
+   * record) against the documented endpoint and the older "/prod" path, so the run log shows whether SAM
+   * has data for this key at all. Two extra requests, never the key itself.
+   */
+  onProbe?: (p: { endpoint: string; status: number; totalRecords: number | null; body: string }) => void;
 }
+
+/** The documented v2 search path and the older "/prod" path some examples still use. */
+export const SAM_PROBE_ENDPOINTS = [SAM_SEARCH, "https://api.sam.gov/prod/opportunities/v2/search"];
 
 const mmddyyyy = (d: Date) =>
   `${String(d.getUTCMonth() + 1).padStart(2, "0")}/${String(d.getUTCDate()).padStart(2, "0")}/${d.getUTCFullYear()}`;
@@ -179,6 +188,8 @@ export class SamGovConnector implements SourceConnector {
     const cap = window.maxRecords ?? 5000;
     const seen = new Set<string>();
     const naicsList = this.opts.naics?.length ? this.opts.naics : [undefined];
+    let queries = 0;
+    let noData = 0;
 
     for (const state of this.opts.states) {
       for (const ncode of naicsList) {
@@ -197,12 +208,14 @@ export class SamGovConnector implements SourceConnector {
           // scorer's notice-type lanes (bid vs intel) sort them.
           if (this.opts.ptypes?.length === 1) q.set("ptype", this.opts.ptypes[0]!);
           let res: { totalRecords?: number; opportunitiesData?: unknown[] };
+          queries++;
           try {
             res = await this.opts.http.json(`${SAM_SEARCH}?${q}`);
           } catch (err) {
             // SAM documents 404 as "No Data found" (often with an empty body) rather than an empty list.
             // A bad key is 403 and a malformed query 400, so those still fail the run.
             if (err instanceof HttpError && err.status === 404) {
+              noData++;
               this.opts.onNoData?.({
                 state,
                 ncode: ncode ?? null,
@@ -230,9 +243,34 @@ export class SamGovConnector implements SourceConnector {
         }
       }
     }
+    if (queries > 0 && noData === queries && this.opts.onProbe) await this.probe(to);
     // SAM queries are by posted-date window, so a run never sees the full set of open notices; it never
     // closes records by absence. SAM's own "active" flag drives status instead.
     run.opportunities = run.opportunities.slice(0, cap);
     return run;
+  }
+
+  private async probe(to: Date): Promise<void> {
+    const q = new URLSearchParams({
+      api_key: this.opts.apiKey,
+      postedFrom: mmddyyyy(new Date(to.getTime() - 3 * 86_400_000)),
+      postedTo: mmddyyyy(to),
+      limit: "1",
+      offset: "0",
+    });
+    for (const endpoint of SAM_PROBE_ENDPOINTS) {
+      try {
+        const res = (await this.opts.http.json(`${endpoint}?${q}`)) as { totalRecords?: number };
+        this.opts.onProbe?.({ endpoint, status: 200, totalRecords: res.totalRecords ?? null, body: "" });
+      } catch (err) {
+        const e = err as { status?: number; body?: string; message?: string };
+        this.opts.onProbe?.({
+          endpoint,
+          status: e.status ?? 0,
+          totalRecords: null,
+          body: (e.body ?? e.message ?? "").slice(0, 200),
+        });
+      }
+    }
   }
 }

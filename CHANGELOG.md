@@ -2,6 +2,9 @@
 
 ## 0.4.2 (2026-10-19)
 
+- New email section, "Strong matches still open": strong-fit bids from earlier emails that are still open and not closing this week, best fit first (up to 10). "Today in brief" may name the best one when nothing new is strong.
+- SAM.gov diagnostics: when every query answers "no data", the run makes one minimal unfiltered request against the documented endpoint and the older "/prod" path and logs the status and record count (`sam_probe`), without the key.
+
 - Change alerts: a key date is reported only when the posting's text changed and the date is still ahead. A parser upgrade re-reading the same text, or a date already past, is no longer news (first live run flagged a past "questions due" date on an unchanged Florida posting).
 - ISF profile display name is now "ISF, Inc." (the scoring was reviewed and tuned with ISF).
 

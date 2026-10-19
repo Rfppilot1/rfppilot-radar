@@ -40,6 +40,10 @@ export function summaryFacts(d: Digest, maxItems = 6): string {
     for (const e of [...d.newMatches].sort((a, b) => b.match.score - a.match.score).slice(0, maxItems))
       lines.push(item(e));
   }
+  if (d.strongOpen?.length) {
+    lines.push(`Strong matches still open from earlier emails (${d.strongOpen.length}):`);
+    for (const e of d.strongOpen.slice(0, maxItems)) lines.push(item(e));
+  }
   if (d.closingSoon.length) {
     lines.push(`Closing within 7 days (${d.closingSoon.length}):`);
     for (const e of d.closingSoon.slice(0, maxItems)) lines.push(item(e));
@@ -60,7 +64,7 @@ export function summaryPrompt(d: Digest): string {
     ``,
     `Write two or three short, plain sentences, under 350 characters in total, no greeting, no bullet points,`,
     `no markdown. Lead with the most actionable item: a changed deadline, cancellation or mandatory meeting on a`,
-    `tracked bid first, then the strongest new match, then anything closing soon. Name bids by a short form of`,
+    `tracked bid first, then the strongest new match, then anything closing soon. If there is no strong new match, you may name the best strong match still open. Name bids by a short form of`,
     `their title and their agency. If nothing changed and nothing is new, say so in one sentence.`,
   ].join("\n");
 }

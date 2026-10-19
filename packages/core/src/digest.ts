@@ -45,6 +45,8 @@ export interface Digest {
   changed?: DigestChange[];
   newMatches: DigestEntry[];
   closingSoon: DigestEntry[];
+  /** Strong matches seen before that are still open and not closing within the week, best fit first. */
+  strongOpen?: DigestEntry[];
   intel: DigestEntry[];
   secondLook: SecondLookItem[];
   signals?: DigestSignal[];
@@ -137,6 +139,7 @@ export function renderDigestText(d: Digest, maxPerSection = 5): string {
   }
   section("New matches", d.newMatches);
   section("Closing within 7 days", d.closingSoon);
+  section("Strong matches still open", d.strongOpen ?? []);
   if (d.secondLook.length > 0) {
     lines.push("", `Second look (${d.secondLook.length})`);
     for (const s of d.secondLook.slice(0, maxPerSection)) lines.push(`- ${s.opportunity.title}: ${s.note}`);
@@ -184,6 +187,7 @@ export function renderDigestMarkdown(d: Digest): string {
   }
   section("New matches", d.newMatches);
   section("Closing within 7 days", d.closingSoon);
+  section("Strong matches still open", d.strongOpen ?? []);
   if (d.secondLook.length > 0) {
     out.push(`## Second look (${d.secondLook.length})`, "");
     for (const s of d.secondLook)
@@ -282,6 +286,8 @@ export function renderDigestHtml(d: Digest): string {
   if (d.newMatches.length) parts.push(h2(`New matches (${d.newMatches.length})`), entries(d.newMatches));
   if (d.closingSoon.length)
     parts.push(h2(`Closing within 7 days (${d.closingSoon.length})`), entries(d.closingSoon));
+  if (d.strongOpen?.length)
+    parts.push(h2(`Strong matches still open (${d.strongOpen.length})`), entries(d.strongOpen));
   if (d.secondLook.length)
     parts.push(
       h2(`Second look (${d.secondLook.length})`),
@@ -295,7 +301,13 @@ export function renderDigestHtml(d: Digest): string {
       d.signals.map((g) => card(g.title, g.sourceUrl, g.detail, "")).join(""),
     );
   if (d.intel.length) parts.push(h2(`Market intel (${d.intel.length})`), entries(d.intel));
-  if (!d.newMatches.length && !d.closingSoon.length && !d.secondLook.length && !d.changed?.length)
+  if (
+    !d.newMatches.length &&
+    !d.closingSoon.length &&
+    !d.strongOpen?.length &&
+    !d.secondLook.length &&
+    !d.changed?.length
+  )
     parts.push(`<p style="${font};color:#556175">Nothing new that fits today.</p>`);
   parts.push(
     `<p style="${font};font-size:11px;color:#6B7689;margin-top:18px">Every item links to the public posting. Scores are explained by the reasons shown; nothing is inferred beyond what the posting states. To stop these emails, use the unsubscribe option in your mail app.</p></div>`,
@@ -317,7 +329,7 @@ function glanceHtml(d: Digest, font: string): string {
     n === 0
       ? ""
       : `<td width="${pct(n)}%" style="background:${color};height:8px;font-size:0;line-height:0">&nbsp;</td>`;
-  const top = [...d.newMatches, ...d.closingSoon].sort((a, b) => b.match.score - a.match.score)[0];
+  const top = [...d.newMatches, ...d.closingSoon, ...(d.strongOpen ?? [])].sort((a, b) => b.match.score - a.match.score)[0];
   const next = [...d.closingSoon].sort((a, b) =>
     (a.opportunity.dueAt ?? "").localeCompare(b.opportunity.dueAt ?? ""),
   )[0];
