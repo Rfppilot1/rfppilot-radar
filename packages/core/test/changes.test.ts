@@ -57,7 +57,7 @@ describe("change detection", () => {
     });
     const cur = opp({
       dueAt: "2026-11-30T20:00:00.000Z",
-      description: "IV&V services.",
+      description: "IV&V services. Mandatory pre-bid Nov 2.",
       documents: [
         { filename: "RFP.pdf", url: "https://x.gov/1", description: null, postedAt: null },
         { filename: "Addendum No. 1.pdf", url: "https://x.gov/2", description: null, postedAt: null },
@@ -86,6 +86,28 @@ describe("change detection", () => {
     expect(diffOpportunity(opp(), opp({ status: "closed" }), NOW)[0]?.kind).toBe("withdrawn");
     // Closed after its deadline passed is the normal end of a posting, not news.
     expect(diffOpportunity(opp(), opp({ status: "closed" }), "2026-12-01T00:00:00.000Z")).toEqual([]);
+  });
+
+  it("ignores key dates found by re-reading unchanged text, and dates already past", () => {
+    const text = "IV&V services. Questions due October 6, 2026. Pre-bid conference November 2, 2026.";
+    const prev = opp({ description: text, documents: [] });
+    const reparsed = opp({
+      description: text,
+      documents: [],
+      keyDates: [{ kind: "pre_bid", date: "2026-11-02", time: null, mandatory: null, note: "x" }],
+    });
+    expect(diffOpportunity(prev, reparsed, NOW)).toEqual([]);
+    const amended = opp({
+      description: `${text} Amended.`,
+      documents: [],
+      keyDates: [
+        { kind: "questions_due", date: "2026-10-06", time: null, mandatory: null, note: "x" },
+        { kind: "pre_bid", date: "2026-11-02", time: null, mandatory: null, note: "x" },
+      ],
+    });
+    expect(diffOpportunity(prev, amended, NOW).map(changeLine)).toEqual([
+      "Added: Pre-bid conference Nov 2",
+    ]);
   });
 
   it("does not report detail Radar only just started reading as a change", () => {

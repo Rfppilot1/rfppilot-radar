@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2 (2026-10-19)
+
+- Change alerts: a key date is reported only when the posting's text changed and the date is still ahead. A parser upgrade re-reading the same text, or a date already past, is no longer news (first live run flagged a past "questions due" date on an unchanged Florida posting).
+- ISF profile display name is now "ISF, Inc." (the scoring was reviewed and tuned with ISF).
+
 ## 0.4.1 (2026-10-18)
 
 - **Estimated contract value** on every card that states one: Texas from the agency's estimate field

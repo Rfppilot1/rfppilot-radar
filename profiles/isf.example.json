@@ -1,7 +1,7 @@
 {
   "id": "isf-main",
   "tenantId": "isf",
-  "name": "ISF, Inc. (draft profile, built from ISF's public record; ISF to confirm)",
+  "name": "ISF, Inc.",
   "states": ["FL", "TX"],
   "includeFederal": true,
   "minDaysToRespond": 7,

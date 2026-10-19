@@ -50,8 +50,13 @@ export function diffOpportunity(prev: Opportunity, cur: Opportunity, now?: strin
   if (addendumNow) out.push({ kind: "addendum", documents: added });
   else if (added.length > 0) out.push({ kind: "documents_added", documents: added });
 
-  if (comparable) {
-    for (const k of cur.keyDates) {
+  // A key date is news only when the posting's text actually changed (a parser upgrade re-reading the same
+  // text is not an agency action) and the date has not already passed.
+  const textChanged = (prev.description ?? "") !== (cur.description ?? "");
+  const today = now ? now.slice(0, 10) : null;
+  const upcoming = (k: KeyDate) => k.date === null || today === null || k.date >= today;
+  if (comparable && textChanged) {
+    for (const k of cur.keyDates.filter(upcoming)) {
       const same = prev.keyDates.find((p) => p.kind === k.kind);
       if (!same) out.push({ kind: "key_date", keyDate: k, previous: null });
       else if (same.date !== k.date || same.time !== k.time || same.mandatory !== k.mandatory)
