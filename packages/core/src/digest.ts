@@ -329,7 +329,9 @@ function glanceHtml(d: Digest, font: string): string {
     n === 0
       ? ""
       : `<td width="${pct(n)}%" style="background:${color};height:8px;font-size:0;line-height:0">&nbsp;</td>`;
-  const top = [...d.newMatches, ...d.closingSoon, ...(d.strongOpen ?? [])].sort((a, b) => b.match.score - a.match.score)[0];
+  const top = [...d.newMatches, ...d.closingSoon, ...(d.strongOpen ?? [])].sort(
+    (a, b) => b.match.score - a.match.score,
+  )[0];
   const next = [...d.closingSoon].sort((a, b) =>
     (a.opportunity.dueAt ?? "").localeCompare(b.opportunity.dueAt ?? ""),
   )[0];

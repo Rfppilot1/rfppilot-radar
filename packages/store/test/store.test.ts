@@ -212,7 +212,11 @@ describe.each(impls)("%s repository", (_name, make) => {
     expect(d.newMatches).toEqual([]);
     const listed = (d.strongOpen ?? []).map((e) => e.opportunity.id);
     const closing = d.closingSoon.map((e) => e.opportunity.id);
-    expect({ band: m?.band, closing, listed }).toEqual({ band: "strong", closing: [], listed: ["tx-esbd:1"] });
+    expect({ band: m?.band, closing, listed }).toEqual({
+      band: "strong",
+      closing: [],
+      listed: ["tx-esbd:1"],
+    });
     expect(listed.some((id) => closing.includes(id))).toBe(false);
   });
 

@@ -276,7 +276,12 @@ describe("SAM.gov", () => {
     }).fetch();
     expect(probes).toEqual([
       { endpoint: "https://api.sam.gov/opportunities/v2/search", status: 404, totalRecords: null, body: "" },
-      { endpoint: "https://api.sam.gov/prod/opportunities/v2/search", status: 200, totalRecords: 42, body: "" },
+      {
+        endpoint: "https://api.sam.gov/prod/opportunities/v2/search",
+        status: 200,
+        totalRecords: 42,
+        body: "",
+      },
     ]);
     expect(urls.filter((u) => !u.includes("state=")).every((u) => u.includes("limit=1"))).toBe(true);
     expect(JSON.stringify(probes)).not.toContain("secret-key");

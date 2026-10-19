@@ -15,7 +15,8 @@ export class AnthropicSummarizer {
   ) {}
 
   async summarize(d: Digest): Promise<string | null> {
-    if (!d.newMatches.length && !d.changed?.length && !d.closingSoon.length && !d.strongOpen?.length) return null;
+    if (!d.newMatches.length && !d.changed?.length && !d.closingSoon.length && !d.strongOpen?.length)
+      return null;
     const res = await this.fetchImpl("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {

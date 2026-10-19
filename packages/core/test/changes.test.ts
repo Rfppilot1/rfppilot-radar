@@ -105,9 +105,7 @@ describe("change detection", () => {
         { kind: "pre_bid", date: "2026-11-02", time: null, mandatory: null, note: "x" },
       ],
     });
-    expect(diffOpportunity(prev, amended, NOW).map(changeLine)).toEqual([
-      "Added: Pre-bid conference Nov 2",
-    ]);
+    expect(diffOpportunity(prev, amended, NOW).map(changeLine)).toEqual(["Added: Pre-bid conference Nov 2"]);
   });
 
   it("does not report detail Radar only just started reading as a change", () => {
