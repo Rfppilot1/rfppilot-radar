@@ -2,6 +2,9 @@
 
 ## 0.4.2 (2026-10-19)
 
+- "Today in brief" is always present: when the AI summary is unavailable or comes back empty, a plain brief is written from the digest's own facts (`summary_fallback` in the run log); an empty AI reply is now logged with its stop reason.
+- Second look: a near miss appears once, on the day it is first seen, and never for federal notices under the federal bar. Passed bids that later changed still appear whenever they apply.
+
 - Federal fit bar: SAM.gov notices appear in the email only at fit 45 or above (`RADAR_FEDERAL_MIN_SCORE`); below it they count as screened out. Broad consulting codes matched Defense and NASA work that does not fit a state and local firm.
 - Federal agency names are shown in title case with acronyms kept and repeated offices dropped ("Dept of Defense / Dept of the Navy").
 

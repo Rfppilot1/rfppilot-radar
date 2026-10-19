@@ -138,6 +138,28 @@ describe("explanations", () => {
   });
 });
 
+describe("fallback brief", () => {
+  it("writes a brief from the digest alone, naming the best open strong match and the soonest deadline", async () => {
+    const { fallbackSummary } = await import("../src/index.js");
+    const entry = (title: string, score: number, dueAt: string) => ({
+      opportunity: opp({ title, dueAt, buyer: { name: "DEPT OF DEFENSE", id: null, level: "federal" } }),
+      match: { score, band: score >= 55 ? "strong" : "possible" } as never,
+    });
+    const text = fallbackSummary({
+      profileName: "ISF, Inc.",
+      generatedAt: NOW,
+      newMatches: [],
+      closingSoon: [entry("Exam", 47, "2026-10-19T20:00:00.000Z")],
+      strongOpen: [entry("IV&V", 75, "2026-10-30T20:00:00.000Z")],
+      intel: [],
+      secondLook: [],
+    });
+    expect(text).toBe(
+      "No new strong matches; the best open one is IV&V (Dept of Defense, fit 75, due Oct 30). Closing soonest: Exam (Dept of Defense, fit 47, due Oct 19).",
+    );
+  });
+});
+
 describe("agency names", () => {
   it("title-cases shouting federal names, keeps acronyms, and drops a repeated office", async () => {
     const { displayAgency } = await import("../src/index.js");

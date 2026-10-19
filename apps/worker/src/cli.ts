@@ -22,6 +22,7 @@ import {
   renderDigestText,
   type Opportunity,
   type SourceId,
+  fallbackSummary,
 } from "@radar/core";
 import {
   MemoryRepository,
@@ -363,6 +364,11 @@ async function main() {
             log({ event: "summary_failed", profile: p.id, error: err.message });
             return null;
           });
+        }
+        // Never send without a brief: fall back to one written straight from the digest's own facts.
+        if (!d.summary) {
+          d.summary = fallbackSummary(d);
+          if (summarizer) log({ event: "summary_fallback", profile: p.id });
         }
         const stem = `${dir}/${p.tenantId}-${p.id}-${now.slice(0, 10)}`;
         const html = renderDigestHtml(d);

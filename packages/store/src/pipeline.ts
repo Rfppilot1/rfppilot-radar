@@ -171,6 +171,7 @@ export async function buildDigest(
       .map(({ opportunity, match }) => ({ opportunity, match }));
 
   const federalMin = o.federalMinScore ?? FEDERAL_MIN_SCORE;
+  const firstSeen = new Map(matches.map((m) => [m.opportunityId, m.firstMatchedAt] as const));
   const clearsBar = (m: Match) => opps.get(m.opportunityId)?.source !== "sam-gov" || m.score >= federalMin;
   const good = (b: Match["band"], m?: Match) => GOOD_BANDS.has(b) && (!m || clearsBar(m));
   const isNew = (firstGood: string | null) => firstGood !== null && firstGood >= o.since;
@@ -269,6 +270,8 @@ export async function buildDigest(
         daysBetween(o.now, e.opportunity.dueAt) <= window,
     ),
     intel: entries((e) => e.match.lane === "intel" && good(e.match.band, e.match) && isNew(e.firstGood)),
+    // Near misses are shown once, on the day they first appear, and never for federal notices under the bar;
+    // pass decisions that changed are shown whenever they apply.
     secondLook: secondLook({
       opportunities: opps,
       matches,
@@ -276,6 +279,9 @@ export async function buildDigest(
       hashAtDecision: new Map(decisions.map((d) => [d.opportunityId, d.hashAtDecision])),
       now: o.now,
       possibleCutoff: resolveScoring(profile).bands.possible,
-    }),
+    }).filter(
+      (s) =>
+        s.why !== "near_miss" || (clearsBar(s.match) && (firstSeen.get(s.opportunity.id) ?? "") >= o.since),
+    ),
   };
 }

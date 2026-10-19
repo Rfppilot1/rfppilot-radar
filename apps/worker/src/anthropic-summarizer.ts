@@ -32,13 +32,13 @@ export class AnthropicSummarizer {
       }),
     });
     if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const body = (await res.json()) as { content?: { type: string; text?: string }[] };
+    const body = (await res.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string };
     const text = (body.content ?? [])
       .filter((c) => c.type === "text")
       .map((c) => c.text ?? "")
       .join("");
     const summary = cleanSummary(text);
-    if (!summary) return null;
+    if (!summary) throw new Error(`Summary empty (stop_reason=${body.stop_reason ?? "unknown"})`);
     const untraceable = untraceableNumbers(summary, summaryFacts(d));
     if (untraceable.length)
       throw new Error(`Summary dropped: numbers not in the digest (${untraceable.join(", ")})`);

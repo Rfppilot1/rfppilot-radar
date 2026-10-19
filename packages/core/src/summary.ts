@@ -78,3 +78,38 @@ export function cleanSummary(text: string): string | null {
     .trim();
   return t ? clipSentence(t, 420) : null;
 }
+
+/**
+ * A plain "Today in brief" written from the digest itself, used when the AI summary is unavailable or empty, so
+ * the email never goes out without one. Every figure comes straight from the digest.
+ */
+export function fallbackSummary(d: Digest): string | null {
+  const due = (iso: string | null) =>
+    iso
+      ? new Date(iso).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          timeZone: "America/New_York",
+        })
+      : "no due date";
+  const name = (e: DigestEntry) =>
+    `${e.opportunity.title} (${displayAgency(e.opportunity.buyer.name)}, fit ${Math.round(e.match.score)}, due ${due(e.opportunity.dueAt)})`;
+  const parts: string[] = [];
+  if (d.changed?.length)
+    parts.push(
+      `${d.changed.length} tracked bid${d.changed.length === 1 ? "" : "s"} changed since the last email.`,
+    );
+  const best = [...d.newMatches].sort((a, b) => b.match.score - a.match.score)[0];
+  if (best)
+    parts.push(
+      `${d.newMatches.length} new match${d.newMatches.length === 1 ? "" : "es"}; the best is ${name(best)}.`,
+    );
+  else if (d.strongOpen?.length)
+    parts.push(`No new strong matches; the best open one is ${name(d.strongOpen[0]!)}.`);
+  else parts.push("No new matches today.");
+  const soon = [...d.closingSoon].sort((a, b) =>
+    (a.opportunity.dueAt ?? "").localeCompare(b.opportunity.dueAt ?? ""),
+  )[0];
+  if (soon) parts.push(`Closing soonest: ${name(soon)}.`);
+  return parts.join(" ") || null;
+}
