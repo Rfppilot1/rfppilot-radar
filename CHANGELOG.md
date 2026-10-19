@@ -2,6 +2,8 @@
 
 ## 0.4.2 (2026-10-19)
 
+- SAM.gov fixed: dates are sent with literal slashes ("10/16/2026"). URLSearchParams encoded them as %2F, and SAM answered every query with 404 "no data". Confirmed by the same request with literal slashes returning 1,210 records.
+
 - New email section, "Strong matches still open": strong-fit bids from earlier emails that are still open and not closing this week, best fit first (up to 10). "Today in brief" may name the best one when nothing new is strong.
 - SAM.gov diagnostics: when every query answers "no data", the run makes one minimal unfiltered request against the documented endpoint and the older "/prod" path and logs the status and record count (`sam_probe`), without the key.
 

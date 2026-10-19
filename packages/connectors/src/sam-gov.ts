@@ -162,6 +162,12 @@ export interface SamOptions {
 /** The documented v2 search path and the older "/prod" path some examples still use. */
 export const SAM_PROBE_ENDPOINTS = [SAM_SEARCH, "https://api.sam.gov/prod/opportunities/v2/search"];
 
+/**
+ * SAM's search reads dates only with literal slashes ("10/16/2026"). URLSearchParams encodes them as %2F, which
+ * SAM answers with 404 "no data" for every query, so the slashes are restored before sending.
+ */
+export const samQuery = (q: URLSearchParams) => q.toString().replace(/%2F/gi, "/");
+
 const mmddyyyy = (d: Date) =>
   `${String(d.getUTCMonth() + 1).padStart(2, "0")}/${String(d.getUTCDate()).padStart(2, "0")}/${d.getUTCFullYear()}`;
 
@@ -210,7 +216,7 @@ export class SamGovConnector implements SourceConnector {
           let res: { totalRecords?: number; opportunitiesData?: unknown[] };
           queries++;
           try {
-            res = await this.opts.http.json(`${SAM_SEARCH}?${q}`);
+            res = await this.opts.http.json(`${SAM_SEARCH}?${samQuery(q)}`);
           } catch (err) {
             // SAM documents 404 as "No Data found" (often with an empty body) rather than an empty list.
             // A bad key is 403 and a malformed query 400, so those still fail the run.
@@ -260,7 +266,7 @@ export class SamGovConnector implements SourceConnector {
     });
     for (const endpoint of SAM_PROBE_ENDPOINTS) {
       try {
-        const res = (await this.opts.http.json(`${endpoint}?${q}`)) as { totalRecords?: number };
+        const res = (await this.opts.http.json(`${endpoint}?${samQuery(q)}`)) as { totalRecords?: number };
         this.opts.onProbe?.({ endpoint, status: 200, totalRecords: res.totalRecords ?? null, body: "" });
       } catch (err) {
         const e = err as { status?: number; body?: string; message?: string };

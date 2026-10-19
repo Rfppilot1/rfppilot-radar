@@ -235,6 +235,27 @@ describe("SAM.gov", () => {
     await expect(mk('{"error":{"code":"API_KEY_INVALID"}}', 403).fetch()).rejects.toThrow(/HTTP 403/);
   });
 
+  it("sends SAM dates with literal slashes, the only form SAM reads", async () => {
+    const urls: string[] = [];
+    await new SamGovConnector({
+      http: new HttpClient({
+        userAgent: "t",
+        minIntervalMs: 0,
+        maxRetries: 0,
+        fetchImpl: (async (url: string) => {
+          urls.push(String(url));
+          return new Response('{"totalRecords":0,"opportunitiesData":[]}', { status: 200 });
+        }) as unknown as typeof fetch,
+      }),
+      apiKey: "k",
+      states: ["FL"],
+      now: () => "2026-10-19T12:00:00.000Z",
+    }).fetch();
+    expect(urls[0]).toContain("postedFrom=10/05/2026");
+    expect(urls[0]).toContain("postedTo=10/19/2026");
+    expect(urls[0]).not.toMatch(/%2F/i);
+  });
+
   it("probes once, without the key in the log, when every SAM query answers no data", async () => {
     const urls: string[] = [];
     const probes: { endpoint: string; status: number; totalRecords: number | null }[] = [];
