@@ -138,6 +138,24 @@ describe("explanations", () => {
   });
 });
 
+describe("agency names", () => {
+  it("title-cases shouting federal names, keeps acronyms, and drops a repeated office", async () => {
+    const { displayAgency } = await import("../src/index.js");
+    expect(displayAgency("DEPT OF DEFENSE / DEPT OF THE NAVY")).toBe("Dept of Defense / Dept of the Navy");
+    expect(displayAgency("DEPT OF DEFENSE / US SPECIAL OPERATIONS COMMAND (USSOCOM)")).toBe(
+      "Dept of Defense / US Special Operations Command (USSOCOM)",
+    );
+    expect(
+      displayAgency(
+        "NATIONAL AERONAUTICS AND SPACE ADMINISTRATION / NATIONAL AERONAUTICS AND SPACE ADMINISTRATION",
+      ),
+    ).toBe("National Aeronautics and Space Administration");
+    expect(displayAgency("Dept Family And Protective Svc - 530")).toBe(
+      "Dept Family And Protective Svc - 530",
+    );
+  });
+});
+
 describe("estimated value", () => {
   it("reads a stated value conservatively and formats it", async () => {
     const { valueFromText, formatValue, parseMoney } = await import("../src/index.js");

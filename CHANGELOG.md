@@ -2,6 +2,9 @@
 
 ## 0.4.2 (2026-10-19)
 
+- Federal fit bar: SAM.gov notices appear in the email only at fit 45 or above (`RADAR_FEDERAL_MIN_SCORE`); below it they count as screened out. Broad consulting codes matched Defense and NASA work that does not fit a state and local firm.
+- Federal agency names are shown in title case with acronyms kept and repeated offices dropped ("Dept of Defense / Dept of the Navy").
+
 - SAM.gov fixed: dates are sent with literal slashes ("10/16/2026"). URLSearchParams encoded them as %2F, and SAM answered every query with 404 "no data". Confirmed by the same request with literal slashes returning 1,210 records.
 
 - New email section, "Strong matches still open": strong-fit bids from earlier emails that are still open and not closing this week, best fit first (up to 10). "Today in brief" may name the best one when nothing new is strong.

@@ -1,3 +1,4 @@
+import { displayAgency } from "./names.js";
 import { changeLine } from "./changes.js";
 import type { Digest, DigestEntry } from "./digest.js";
 import { keyDateLabel, upcomingKeyDates } from "./keydates.js";
@@ -21,7 +22,7 @@ export function summaryFacts(d: Digest, maxItems = 6): string {
     const kd = upcomingKeyDates(e.opportunity.keyDates ?? [], d.generatedAt, e.opportunity.dueAt).map(
       keyDateLabel,
     );
-    return `- "${e.opportunity.title}" | ${e.opportunity.buyer.name} | ${e.opportunity.state ?? ""} | fit ${Math.round(e.match.score)} (${e.match.band}) | due ${due(e.opportunity.dueAt)}${e.opportunity.estimatedValue ? ` | estimated value ${formatValue(e.opportunity.estimatedValue)}` : ""}${kd.length ? ` | ${kd.join("; ")}` : ""}`;
+    return `- "${e.opportunity.title}" | ${displayAgency(e.opportunity.buyer.name)} | ${e.opportunity.state ?? ""} | fit ${Math.round(e.match.score)} (${e.match.band}) | due ${due(e.opportunity.dueAt)}${e.opportunity.estimatedValue ? ` | estimated value ${formatValue(e.opportunity.estimatedValue)}` : ""}${kd.length ? ` | ${kd.join("; ")}` : ""}`;
   };
   const lines: string[] = [];
   if (d.glance)
@@ -32,7 +33,7 @@ export function summaryFacts(d: Digest, maxItems = 6): string {
     lines.push(`Changed since last email (${d.changed.length}):`);
     for (const c of d.changed.slice(0, maxItems))
       lines.push(
-        `- "${c.opportunity.title}" | ${c.opportunity.buyer.name}: ${c.changes.map(changeLine).join("; ")}`,
+        `- "${c.opportunity.title}" | ${displayAgency(c.opportunity.buyer.name)}: ${c.changes.map(changeLine).join("; ")}`,
       );
   }
   if (d.newMatches.length) {

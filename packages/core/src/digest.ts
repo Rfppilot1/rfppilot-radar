@@ -1,3 +1,4 @@
+import { displayAgency } from "./names.js";
 import type { SecondLookItem } from "./review.js";
 import type { Match, Opportunity, Reason } from "./schema.js";
 import { BANDS } from "./scoring.js";
@@ -83,7 +84,7 @@ const kindText = (o: Opportunity) => o.kindLabel ?? KIND_LABEL[o.kind];
 
 /** Source · buyer · notice type · due date · estimated value (when the posting states one). */
 const metaLine = (o: Opportunity, ref: string) =>
-  `${SOURCE_LABEL[o.source]} · ${o.buyer.name} · ${kindText(o)} · due ${fmtDate(o.dueAt, ref)}` +
+  `${SOURCE_LABEL[o.source]} · ${displayAgency(o.buyer.name)} · ${kindText(o)} · due ${fmtDate(o.dueAt, ref)}` +
   (o.estimatedValue ? ` · Est. ${formatValue(o.estimatedValue)}` : "");
 
 const SOURCE_LABEL: Record<Opportunity["source"], string> = {
@@ -124,7 +125,7 @@ export function renderDigestText(d: Digest, maxPerSection = 5): string {
     lines.push("", `${title} (${rows.length})`);
     for (const { opportunity: o, match: m } of rows.slice(0, maxPerSection)) {
       lines.push(
-        `- ${o.title} | ${o.buyer.name} | due ${fmtDate(o.dueAt, d.generatedAt)}${o.estimatedValue ? ` | est. ${formatValue(o.estimatedValue)}` : ""} | fit ${Math.round(m.score)}`,
+        `- ${o.title} | ${displayAgency(o.buyer.name)} | due ${fmtDate(o.dueAt, d.generatedAt)}${o.estimatedValue ? ` | est. ${formatValue(o.estimatedValue)}` : ""} | fit ${Math.round(m.score)}`,
       );
       const kd = upcomingKeyDates(o.keyDates ?? [], d.generatedAt, o.dueAt);
       if (kd.length) lines.push(`  ${kd.map(keyDateLabel).join(" · ")}`);

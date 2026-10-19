@@ -137,7 +137,15 @@ export interface DigestOptions {
   since: string;
   now: string;
   closingWithinDays?: number;
+  /**
+   * Federal (SAM.gov) notices reach the email only at or above this fit score; below it they count as screened
+   * out. Federal postings match broad consulting codes far more often than they fit a state and local firm.
+   * Default 45.
+   */
+  federalMinScore?: number;
 }
+
+export const FEDERAL_MIN_SCORE = 45;
 
 export async function buildDigest(
   repo: Repository,
@@ -162,7 +170,9 @@ export async function buildDigest(
       .filter((e) => e.opportunity && pred(e))
       .map(({ opportunity, match }) => ({ opportunity, match }));
 
-  const good = (b: Match["band"]) => GOOD_BANDS.has(b);
+  const federalMin = o.federalMinScore ?? FEDERAL_MIN_SCORE;
+  const clearsBar = (m: Match) => opps.get(m.opportunityId)?.source !== "sam-gov" || m.score >= federalMin;
+  const good = (b: Match["band"], m?: Match) => GOOD_BANDS.has(b) && (!m || clearsBar(m));
   const isNew = (firstGood: string | null) => firstGood !== null && firstGood >= o.since;
   const notPassed = (id: string) => decided.get(id)?.decision !== "pass";
   const window = o.closingWithinDays ?? 7;
@@ -179,16 +189,16 @@ export async function buildDigest(
   }
   const glance = {
     screened: open.length,
-    strong: open.filter((m) => m.band === "strong").length,
-    possible: open.filter((m) => m.band === "possible").length,
-    notFit: open.filter((m) => m.band === "weak" || m.band === "excluded").length,
+    strong: open.filter((m) => m.band === "strong" && clearsBar(m)).length,
+    possible: open.filter((m) => m.band === "possible" && clearsBar(m)).length,
+    notFit: open.filter((m) => !good(m.band, m)).length,
     bySource,
   };
 
   // Change alerts: anything the reader is tracking (a strong or possible match, or a bid they chose to
   // pursue) whose posting changed since their last digest. New matches are listed as new instead.
   const newIds = new Set(
-    matches.filter((m) => good(m.band) && isNew(m.firstGoodAt)).map((m) => m.opportunityId),
+    matches.filter((m) => good(m.band, m) && isNew(m.firstGoodAt)).map((m) => m.opportunityId),
   );
   const changedIds = new Set(await repo.changedSince(o.since));
   const tracked = changedIds.size
@@ -202,7 +212,7 @@ export async function buildDigest(
           changedIds.has(m.opportunityId) &&
           !newIds.has(m.opportunityId) &&
           notPassed(m.opportunityId) &&
-          (good(m.band) || ["pursue", "watch"].includes(decided.get(m.opportunityId)?.decision ?? "")),
+          (good(m.band, m) || ["pursue", "watch"].includes(decided.get(m.opportunityId)?.decision ?? "")),
       )
     : [];
   const trackedIds = tracked.map((m) => m.opportunityId);
@@ -226,6 +236,7 @@ export async function buildDigest(
     (e) =>
       e.match.lane === "bid" &&
       e.match.band === "strong" &&
+      clearsBar(e.match) &&
       !isNew(e.firstGood) &&
       notPassed(e.opportunity.id) &&
       (e.opportunity.dueAt === null || e.opportunity.dueAt >= o.now) &&
@@ -243,18 +254,21 @@ export async function buildDigest(
     bands: resolveScoring(profile).bands,
     newMatches: entries(
       (e) =>
-        e.match.lane === "bid" && good(e.match.band) && isNew(e.firstGood) && notPassed(e.opportunity.id),
+        e.match.lane === "bid" &&
+        good(e.match.band, e.match) &&
+        isNew(e.firstGood) &&
+        notPassed(e.opportunity.id),
     ),
     closingSoon: entries(
       (e) =>
         e.match.lane === "bid" &&
-        good(e.match.band) &&
+        good(e.match.band, e.match) &&
         notPassed(e.opportunity.id) &&
         e.opportunity.dueAt !== null &&
         daysBetween(o.now, e.opportunity.dueAt) >= 0 &&
         daysBetween(o.now, e.opportunity.dueAt) <= window,
     ),
-    intel: entries((e) => e.match.lane === "intel" && good(e.match.band) && isNew(e.firstGood)),
+    intel: entries((e) => e.match.lane === "intel" && good(e.match.band, e.match) && isNew(e.firstGood)),
     secondLook: secondLook({
       opportunities: opps,
       matches,

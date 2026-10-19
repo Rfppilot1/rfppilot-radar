@@ -220,6 +220,29 @@ describe.each(impls)("%s repository", (_name, make) => {
     expect(listed.some((id) => closing.includes(id))).toBe(false);
   });
 
+  it("shows federal notices only at or above the federal fit bar, and counts the rest as screened out", async () => {
+    const p = profile();
+    await repo.upsertProfile(p, NOW);
+    const fed = (id: string) =>
+      opp(id, {
+        id: `sam-gov:${id}`,
+        source: "sam-gov",
+        buyer: { name: "DEPT OF DEFENSE / DEPT OF THE NAVY", id: null, level: "federal" },
+        provenance: { ...opp(id).provenance, source: "sam-gov" },
+      });
+    await repo.upsertOpportunities([opp("1"), fed("2")], NOW);
+    await rescoreProfile(repo, p, NOW);
+    const state = await repo.getMatch("isf", "isf-main", "tx-esbd:1");
+    const federal = await repo.getMatch("isf", "isf-main", "sam-gov:2");
+    expect(federal?.score).toBe(state?.score);
+    const since = "2026-10-14T00:00:00.000Z";
+    const open = await buildDigest(repo, "isf", "isf-main", { since, now: NOW, federalMinScore: 0 });
+    expect(open.newMatches.map((e) => e.opportunity.id).sort()).toEqual(["sam-gov:2", "tx-esbd:1"]);
+    const barred = await buildDigest(repo, "isf", "isf-main", { since, now: NOW, federalMinScore: 101 });
+    expect(barred.newMatches.map((e) => e.opportunity.id)).toEqual(["tx-esbd:1"]);
+    expect(barred.glance!.notFit).toBe(open.glance!.notFit + 1);
+  });
+
   it("remembers the last delivered digest per tenant profile", async () => {
     await repo.upsertProfile(profile(), NOW);
     expect(await repo.lastDigestAt("isf", "isf-main")).toBeNull();

@@ -27,6 +27,7 @@ import {
   MemoryRepository,
   PostgresRepository,
   buildDigest,
+  FEDERAL_MIN_SCORE,
   ingestRun,
   migrate,
   rescoreProfile,
@@ -282,7 +283,11 @@ async function main() {
         values.since ??
         (await repo.lastDigestAt(values.tenant, values.profile)) ??
         new Date(Date.now() - 86_400_000).toISOString();
-      const d = await buildDigest(repo, values.tenant, values.profile, { since, now });
+      const d = await buildDigest(repo, values.tenant, values.profile, {
+        since,
+        now,
+        federalMinScore: Number(process.env.RADAR_FEDERAL_MIN_SCORE ?? FEDERAL_MIN_SCORE),
+      });
       const out =
         values.format === "json"
           ? JSON.stringify(d, null, 2)
@@ -339,7 +344,11 @@ async function main() {
         const since = replay ? "1970-01-01T00:00:00.000Z" : (last ?? "1970-01-01T00:00:00.000Z");
         if (replay)
           log({ event: "digest_replay", profile: p.id, until: process.env.RADAR_DIGEST_REPLAY_UNTIL });
-        const d = await buildDigest(repo, p.tenantId, p.id, { since, now });
+        const d = await buildDigest(repo, p.tenantId, p.id, {
+          since,
+          now,
+          federalMinScore: Number(process.env.RADAR_FEDERAL_MIN_SCORE ?? FEDERAL_MIN_SCORE),
+        });
         if (values.signals !== "off") {
           // FEMA signals are a bonus; a failure here never blocks the digest.
           const signalsSince = last ?? new Date(Date.now() - 30 * 86_400_000).toISOString();

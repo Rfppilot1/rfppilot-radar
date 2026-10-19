@@ -37,6 +37,7 @@ password never appears in this repo.
 | `RADAR_EMAIL_FROM`          |     | ✓      | `Radar <radar@rfppilot.com>` (domain verified in Resend)                                                               |
 | `RADAR_UNSUBSCRIBE_EMAIL`   |     | ✓      | A mailbox you read, e.g. `radar-unsubscribe@rfppilot.com` (honor requests within 10 business days)                     |
 | `RADAR_RECIPIENTS`          |     | ✓      | `isf/isf-main=ben@rfppilot.com` at first; add Monica's address after the first clean digests                           |
+| `RADAR_FEDERAL_MIN_SCORE`   |     | ✓      | Federal (SAM.gov) notices reach the email only at this fit or above; default `45`                                      |
 | `RADAR_DIGEST_REPLAY_UNTIL` |     | ✓      | Optional. An ISO time; runs before it re-send the full current list (to preview a template change). Expires on its own |
 | `RADAR_TX_MAX_DETAILS`      |     | ✓      | Optional. Cap on Texas detail requests per run (default 600); unchanged postings are never re-fetched                  |
 | `RADAR_SAM_STATES`          |     | ✓      | `FL,TX`                                                                                                                |
