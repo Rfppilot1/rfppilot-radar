@@ -1,13 +1,15 @@
 # Changelog
 
-## Unreleased (branch feature/feedback-yes-no; not deployed)
+## Unreleased: Yes/No feedback (shipped dark: test sends only until RADAR_FEEDBACK_LIVE=1)
 
 - Yes/No feedback on every card in the email. Each button opens a small page (signed link per recipient, valid 45 days, no login) where the reader confirms "good fit" / "not a fit" and can add one sentence on why. Opening the link records nothing (mail scanners open every link); only pressing "Save answer" does.
 - A "No" is stored as a pass (the bid drops out of later emails unless the posting changes); a "Yes" as watch (Radar keeps tracking it and reports changes). Reason and recipient are kept with the decision.
 - The AI reviewer now sees the firm's 20 most recent calls (titles, yes/no, reasons) for the same profile only, and cached reviews are redone when that feedback changes.
-- Off unless both `RADAR_FEEDBACK_SECRET` (32+ characters, on the API and the worker) and `RADAR_PUBLIC_URL` (the API's public https address, worker) are set. With feedback on, the worker sends one email per recipient.
+- Off unless both `RADAR_FEEDBACK_SECRET` (32+ characters, on the API and the worker) and `RADAR_PUBLIC_URL` (the API's public https address, worker) are set. With feedback on, the worker sends one email per recipient. Links appear only in test sends (`RADAR_TEST_RECIPIENT`) until `RADAR_FEEDBACK_LIVE=1` is set on the worker.
 
 ## 0.4.3 (2026-10-22)
+
+- Test send: set `RADAR_TEST_RECIPIENT` (one address) and `RADAR_TEST_UNTIL` (ISO time) on the worker to send the next run's email only to that address, subject marked [TEST], without recording it as delivered, so the real recipients' next email is unchanged. Expires on its own.
 
 From ISF's review of the first emails:
 
