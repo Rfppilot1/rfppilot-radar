@@ -5,6 +5,12 @@ import { BANDS } from "./scoring.js";
 import { changeLine, type OpportunityChange } from "./changes.js";
 import { keyDateLabel, upcomingKeyDates } from "./keydates.js";
 import { formatValue } from "./value.js";
+import type { FeedbackVote } from "./feedback.js";
+
+/** Rendering options. `feedback` returns the yes/no link for an opportunity; when absent, no links are shown. */
+export interface RenderOptions {
+  feedback?: (opportunityId: string, vote?: FeedbackVote) => string;
+}
 
 export interface DigestEntry {
   opportunity: Opportunity;
@@ -151,7 +157,7 @@ function remaining(d: Digest, strong: StrongEntry[]) {
 }
 
 /** Plain text suitable for SMS or a chat message. Short lines, no markup. */
-export function renderDigestText(d: Digest, maxPerSection = 5): string {
+export function renderDigestText(d: Digest, maxPerSection = 5, opts: RenderOptions = {}): string {
   const lines: string[] = [`RFP Pilot Radar for ${d.profileName}, ${fmtDate(d.generatedAt)}`];
   if (d.summary) lines.push(d.summary);
   if (d.glance) lines.push(glanceLine(d.glance));
@@ -166,6 +172,7 @@ export function renderDigestText(d: Digest, maxPerSection = 5): string {
       );
       const kd = upcomingKeyDates(o.keyDates ?? [], d.generatedAt, o.dueAt);
       if (kd.length) lines.push(`  ${kd.map(keyDateLabel).join(" · ")}`);
+      if (opts.feedback) lines.push(`  Good fit? Yes/No: ${opts.feedback(o.id)}`);
     }
     if (rows.length > maxPerSection) lines.push(`  +${rows.length - maxPerSection} more in Radar`);
   };
@@ -192,7 +199,7 @@ export function renderDigestText(d: Digest, maxPerSection = 5): string {
 }
 
 /** Markdown for email or a chat client. Each entry links to the public source page and shows why it matched. */
-export function renderDigestMarkdown(d: Digest): string {
+export function renderDigestMarkdown(d: Digest, opts: RenderOptions = {}): string {
   const out: string[] = [`# Radar: ${d.profileName}`, `_${fmtDate(d.generatedAt)}_`, ""];
   if (d.summary) out.push(`**Today in brief:** ${d.summary}`, "");
   if (d.glance) out.push(`**At a glance:** ${glanceLine(d.glance)}`, "");
@@ -208,6 +215,9 @@ export function renderDigestMarkdown(d: Digest): string {
         .join(" · "),
       `**${x.headline}.** ${x.gap}`,
       ...x.rows.map((r) => `- ${r.sign}${r.points} ${r.label}: ${r.text}`),
+      opts.feedback
+        ? `Good fit? [Yes](${opts.feedback(o.id, "yes")}) · [No](${opts.feedback(o.id, "no")})`
+        : "",
       "",
     ].filter(Boolean);
   };
@@ -246,7 +256,7 @@ const esc = (s: string) =>
 const safeUrl = (u: string) => (/^https:\/\//.test(u) ? esc(u) : "#");
 
 /** Email-safe HTML (inline styles, no external assets). All source text is escaped. */
-export function renderDigestHtml(d: Digest): string {
+export function renderDigestHtml(d: Digest, opts: RenderOptions = {}): string {
   const font = "font-family:Inter,Segoe UI,Arial,sans-serif";
   const h2 = (t: string) =>
     `<h2 style="${font};font-size:15px;color:#0E2F6C;margin:22px 0 8px;border-bottom:2px solid #1795C3;padding-bottom:4px">${esc(t)}</h2>`;
@@ -258,6 +268,7 @@ export function renderDigestHtml(d: Digest): string {
     score?: number,
     band?: Match["band"],
     extraHtml = "",
+    footHtml = "",
   ) => {
     const c =
       band === "strong" ? FIT_COLORS.strong : band === "possible" ? FIT_COLORS.possible : FIT_COLORS.notFit;
@@ -271,9 +282,19 @@ export function renderDigestHtml(d: Digest): string {
       `<div style="color:#556175;font-size:12px;margin-top:3px">${esc(meta)}</div>` +
       extraHtml +
       (whyHtml ? `<div style="font-size:12px;margin-top:6px;color:#1B2433">${whyHtml}</div>` : "") +
+      footHtml +
       `</div>`
     );
   };
+  const btn = (href: string, label: string, bg: string, fg: string) =>
+    `<a href="${safeUrl(href)}" style="display:inline-block;background:${bg};color:${fg};border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;text-decoration:none;margin-right:6px">${esc(label)}</a>`;
+  const vote = (id: string) =>
+    opts.feedback
+      ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #E3ECF3;font-size:12px;color:#556175">Good fit for you? ` +
+        btn(opts.feedback(id, "yes"), "Yes", FIT_COLORS.strong.tint, "#145C2A") +
+        btn(opts.feedback(id, "no"), "No", FIT_COLORS.notFit.tint, "#A50E0E") +
+        `</div>`
+      : "";
   const tagPills = (tags: string[] = []) =>
     tags.length
       ? `<div style="margin-top:4px">` +
@@ -296,6 +317,7 @@ export function renderDigestHtml(d: Digest): string {
           Math.round(m.score),
           m.band,
           tagPills(tags) + keyDatesHtml(o, d.generatedAt),
+          vote(o.id),
         ),
       )
       .join("");
@@ -317,6 +339,7 @@ export function renderDigestHtml(d: Digest): string {
           Math.round(m.score),
           m.band,
           keyDatesHtml(o, d.generatedAt),
+          vote(o.id),
         ),
       )
       .join("");

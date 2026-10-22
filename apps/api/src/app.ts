@@ -1,5 +1,6 @@
 import {
   Decision,
+  FEEDBACK_REASON_MAX,
   FirmProfile,
   Match,
   Opportunity,
@@ -9,6 +10,10 @@ import {
   secondLook,
   toHandoff,
   resolveScoring,
+  verifyFeedbackToken,
+  voteToDecision,
+  decisionToVote,
+  type FeedbackVote,
 } from "@radar/core";
 import { NotFoundError, buildDigest, type Repository } from "@radar/store";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
@@ -21,6 +26,8 @@ export interface AppDeps {
   auth: ApiKeyAuth;
   now?: () => string;
   logger?: boolean;
+  /** Secret for the email yes/no links (RADAR_FEEDBACK_SECRET). Without it the /feedback pages are off. */
+  feedbackSecret?: string;
 }
 
 declare module "fastify" {
@@ -199,6 +206,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   });
 
   app.get("/healthz", async () => ({ ok: true }));
+  if (deps.feedbackSecret) registerFeedbackRoutes(app, deps.repo, deps.feedbackSecret, now);
   app.get("/openapi.json", async () => openApiDocument());
 
   // Every tenant route lives inside this plugin, so the auth hook applies by route registration, not by
@@ -333,4 +341,151 @@ function registerTenantRoutes(app: FastifyInstance, repo: Repository, now: () =>
     if (!opp) throw new NotFoundError("Opportunity");
     return opp;
   });
+}
+
+const FeedbackQuery = z.object({ token: z.string().max(2000), v: z.enum(["yes", "no"]).optional() });
+const FeedbackForm = z.object({
+  token: z.string().max(2000),
+  vote: z.enum(["yes", "no"]),
+  reason: z
+    .string()
+    .max(FEEDBACK_REASON_MAX * 4)
+    .optional()
+    .transform((r) => {
+      const t = (r ?? "").replace(/\s+/g, " ").trim().slice(0, FEEDBACK_REASON_MAX);
+      return t || null;
+    }),
+});
+
+/**
+ * Public yes/no pages behind the signed links in the email. GET only shows the form (mail scanners open every
+ * link, so opening one must never count as a vote); POST records the vote as a decision for that profile.
+ * The token fixes tenant, profile, opportunity and recipient, so the form cannot be pointed elsewhere.
+ */
+function registerFeedbackRoutes(app: FastifyInstance, repo: Repository, secret: string, now: () => string) {
+  app.addContentTypeParser(
+    "application/x-www-form-urlencoded",
+    { parseAs: "string", bodyLimit: 16 * 1024 },
+    (_req, body, done) => done(null, Object.fromEntries(new URLSearchParams(body as string))),
+  );
+  const page = (reply: FastifyReply, status: number, title: string, inner: string) =>
+    reply
+      .code(status)
+      .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'")
+      .header("referrer-policy", "no-referrer")
+      .header("x-frame-options", "DENY")
+      .header("cache-control", "no-store")
+      .type("text/html; charset=utf-8")
+      .send(feedbackPage(title, inner));
+  const invalid = (reply: FastifyReply) =>
+    page(
+      reply,
+      400,
+      "Link expired",
+      `<p>This feedback link is invalid or has expired. Use the buttons in a recent Radar email.</p>`,
+    );
+
+  const load = async (token: string) => {
+    const c = verifyFeedbackToken(token, secret, now());
+    if (!c) return null;
+    const profile = await repo.getProfile(c.t, c.p);
+    const opp = profile ? await repo.getOpportunity(c.o) : null;
+    if (!profile || !opp) return null;
+    const match = await repo.getMatch(c.t, c.p, c.o).catch(() => null);
+    const prior = (await repo.listDecisions(c.t, c.p)).find((d) => d.opportunityId === c.o) ?? null;
+    return { c, profile, opp, match, prior };
+  };
+
+  app.get("/feedback", async (req, reply) => {
+    const q = FeedbackQuery.safeParse(req.query);
+    const ctx = q.success ? await load(q.data.token) : null;
+    if (!q.success || !ctx) return invalid(reply);
+    const chosen: FeedbackVote | undefined =
+      q.data.v ?? (ctx.prior ? decisionToVote(ctx.prior.decision) : undefined);
+    return page(reply, 200, "Is this a good fit?", feedbackForm(ctx, q.data.token, chosen));
+  });
+
+  app.post("/feedback", async (req, reply) => {
+    const f = FeedbackForm.safeParse(req.body);
+    const ctx = f.success ? await load(f.data.token) : null;
+    if (!f.success || !ctx) return invalid(reply);
+    await repo.saveDecision(ctx.c.t, {
+      opportunityId: ctx.c.o,
+      profileId: ctx.c.p,
+      decision: voteToDecision(f.data.vote),
+      reason: f.data.reason,
+      decidedBy: ctx.c.r,
+      decidedAt: now(),
+    });
+    const msg =
+      f.data.vote === "yes"
+        ? "Thanks. Radar will keep tracking this bid and will learn from your answer."
+        : "Thanks. Radar will stop showing this bid (unless the posting changes) and will learn from your answer.";
+    return page(
+      reply,
+      200,
+      "Thanks",
+      `<p><b>${esc(ctx.opp.title)}</b></p><p>${esc(msg)}</p>` +
+        `<p><a href="/feedback?token=${encodeURIComponent(f.data.token)}">Change your answer</a></p>`,
+    );
+  });
+}
+
+const esc = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+function feedbackForm(
+  ctx: {
+    opp: Opportunity;
+    match: Match | null;
+    profile: FirmProfile;
+    prior: { decision: Decision["decision"]; reason: string | null } | null;
+  },
+  token: string,
+  chosen?: FeedbackVote,
+): string {
+  const o = ctx.opp;
+  const due = o.dueAt
+    ? new Date(o.dueAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "America/New_York",
+      })
+    : "no due date";
+  const fit = ctx.match ? ` · fit ${Math.round(ctx.match.score)}` : "";
+  const radio = (v: FeedbackVote, label: string) =>
+    `<label class="opt"><input type="radio" name="vote" value="${v}" required${chosen === v ? " checked" : ""}> ${label}</label>`;
+  return (
+    `<p class="muted">${esc(ctx.profile.name)}</p>` +
+    `<h2><a href="${/^https:\/\//.test(o.provenance.sourceUrl) ? esc(o.provenance.sourceUrl) : "#"}" rel="noopener">${esc(o.title)}</a></h2>` +
+    `<p class="muted">${esc(o.buyer.name)} · due ${esc(due)}${esc(fit)}</p>` +
+    (ctx.prior
+      ? `<p class="note">You already answered: ${ctx.prior.decision === "pass" ? "No" : "Yes"}. You can change it below.</p>`
+      : "") +
+    `<form method="post" action="/feedback">` +
+    `<input type="hidden" name="token" value="${esc(token)}">` +
+    `<p><b>Is this a good fit for you?</b></p>` +
+    radio("yes", "Yes, good fit") +
+    radio("no", "No, not a fit") +
+    `<p><label for="reason"><b>Why?</b> <span class="muted">(optional, one sentence; it helps Radar learn)</span></label></p>` +
+    `<textarea id="reason" name="reason" maxlength="${FEEDBACK_REASON_MAX}" rows="3" placeholder="e.g. We don't do construction oversight, or: exactly our IV&amp;V work">${esc(ctx.prior?.reason ?? "")}</textarea>` +
+    `<p><button type="submit">Save answer</button></p>` +
+    `</form>`
+  );
+}
+
+function feedbackPage(title: string, inner: string): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)} · RFP Pilot Radar</title><style>
+body{margin:0;background:#F4F9FD;color:#1B2433;font:15px/1.5 Inter,Segoe UI,Arial,sans-serif}
+.wrap{max-width:560px;margin:0 auto;padding:16px}
+.head{background:linear-gradient(135deg,#1795C3,#1A75C8 55%,#0E2F6C);color:#fff;border-radius:10px;padding:12px 16px}
+.head small{display:block;font-size:11px;letter-spacing:1.5px;color:#7FE3F5;font-weight:700}
+.card{background:#fff;border:1px solid #D3E1EC;border-radius:10px;padding:16px;margin-top:12px}
+h2{font-size:17px;margin:4px 0}h2 a{color:#0E2F6C;text-decoration:none}
+.muted{color:#556175;font-size:13px;margin:2px 0}.note{background:#E8F1FB;border-radius:6px;padding:6px 10px;font-size:13px}
+.opt{display:block;border:1px solid #D3E1EC;border-radius:8px;padding:10px 12px;margin:6px 0;cursor:pointer}
+textarea{width:100%;box-sizing:border-box;border:1px solid #B8C9D9;border-radius:8px;padding:8px;font:inherit}
+button{background:#1A75C8;color:#fff;border:0;border-radius:8px;padding:10px 18px;font:inherit;font-weight:700;cursor:pointer}
+</style></head><body><div class="wrap"><div class="head"><small>RFP PILOT RADAR</small>${esc(title)}</div><div class="card">${inner}</div></div></body></html>`;
 }

@@ -10,3 +10,4 @@ export * from "./changes.js";
 export * from "./summary.js";
 export * from "./value.js";
 export * from "./names.js";
+export * from "./feedback.js";

@@ -22,7 +22,10 @@ import {
   renderDigestText,
   type Opportunity,
   type SourceId,
+  type FeedbackVote,
   fallbackSummary,
+  feedbackUrl,
+  signFeedbackToken,
 } from "@radar/core";
 import {
   MemoryRepository,
@@ -337,6 +340,15 @@ async function main() {
       if (testTo && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(testTo))
         throw new Error("RADAR_TEST_RECIPIENT must be one email address");
       if (testTo) log({ event: "test_send", until: process.env.RADAR_TEST_UNTIL });
+      // Yes/No feedback links need the signing secret and the API's public address. They appear in test
+      // sends, and in real emails only once RADAR_FEEDBACK_LIVE=1, so the feature can be tried end to end
+      // before any customer sees it.
+      const feedback =
+        process.env.RADAR_FEEDBACK_SECRET &&
+        process.env.RADAR_PUBLIC_URL &&
+        (testTo || process.env.RADAR_FEEDBACK_LIVE === "1")
+          ? { secret: process.env.RADAR_FEEDBACK_SECRET, baseUrl: process.env.RADAR_PUBLIC_URL }
+          : null;
       const unsubscribe = `mailto:${process.env.RADAR_UNSUBSCRIBE_EMAIL ?? "radar-unsubscribe@rfppilot.com"}?subject=unsubscribe`;
       // One FEMA lookup per (states, since) per run, shared across profiles.
       const signalCache = new Map<string, Promise<Awaited<ReturnType<typeof recentSignals>>>>();
@@ -394,14 +406,32 @@ async function main() {
         let emailed = false;
         const to = testTo ? [testTo] : recipientsFor(recipientOverrides, p.tenantId, p.id, p.delivery.email);
         if (mailer && to.length > 0) {
+          const subject = `${testTo ? "[TEST] " : ""}${digestSubject(p.name, d.newMatches.length, d.closingSoon.length, now)}`;
           try {
-            await mailer.send({
-              to,
-              subject: `${testTo ? "[TEST] " : ""}${digestSubject(p.name, d.newMatches.length, d.closingSoon.length, now)}`,
-              html,
-              text,
-              unsubscribe,
-            });
+            if (feedback) {
+              // Yes/No links are signed per recipient, so each person gets their own copy.
+              for (const r of to) {
+                const opts = {
+                  feedback: (opportunityId: string, vote?: FeedbackVote) =>
+                    feedbackUrl(
+                      feedback.baseUrl,
+                      signFeedbackToken(
+                        { t: p.tenantId, p: p.id, o: opportunityId, r },
+                        feedback.secret,
+                        now,
+                      ),
+                      vote,
+                    ),
+                };
+                await mailer.send({
+                  to: [r],
+                  subject,
+                  html: renderDigestHtml(d, opts),
+                  text: renderDigestText(d, 5, opts),
+                  unsubscribe,
+                });
+              }
+            } else await mailer.send({ to, subject, html, text, unsubscribe });
             emailed = true;
           } catch (err) {
             // Not recorded as delivered, so tomorrow's digest still includes today's new items.
