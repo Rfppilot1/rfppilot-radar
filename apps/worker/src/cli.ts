@@ -327,6 +327,16 @@ async function main() {
           ? new AnthropicSummarizer(process.env.ANTHROPIC_API_KEY)
           : null;
       const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1000 });
+      // Test send: RADAR_TEST_RECIPIENT gets the email instead of the real recipients, the subject is marked
+      // [TEST], and the digest is NOT recorded as delivered, so the real recipients' next email is unchanged.
+      // Active only until RADAR_TEST_UNTIL (ISO time), so a forgotten setting cannot divert real emails.
+      const testTo =
+        process.env.RADAR_TEST_RECIPIENT && (process.env.RADAR_TEST_UNTIL ?? "") > now
+          ? process.env.RADAR_TEST_RECIPIENT.trim()
+          : null;
+      if (testTo && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(testTo))
+        throw new Error("RADAR_TEST_RECIPIENT must be one email address");
+      if (testTo) log({ event: "test_send", until: process.env.RADAR_TEST_UNTIL });
       const unsubscribe = `mailto:${process.env.RADAR_UNSUBSCRIBE_EMAIL ?? "radar-unsubscribe@rfppilot.com"}?subject=unsubscribe`;
       // One FEMA lookup per (states, since) per run, shared across profiles.
       const signalCache = new Map<string, Promise<Awaited<ReturnType<typeof recentSignals>>>>();
@@ -382,12 +392,12 @@ async function main() {
           log({ event: "digest_files_failed", profile: p.id, error: (err as Error).message });
         }
         let emailed = false;
-        const to = recipientsFor(recipientOverrides, p.tenantId, p.id, p.delivery.email);
+        const to = testTo ? [testTo] : recipientsFor(recipientOverrides, p.tenantId, p.id, p.delivery.email);
         if (mailer && to.length > 0) {
           try {
             await mailer.send({
               to,
-              subject: digestSubject(p.name, d.newMatches.length, d.closingSoon.length, now),
+              subject: `${testTo ? "[TEST] " : ""}${digestSubject(p.name, d.newMatches.length, d.closingSoon.length, now)}`,
               html,
               text,
               unsubscribe,
@@ -399,7 +409,7 @@ async function main() {
             continue;
           }
         }
-        await repo.recordDigest(p.tenantId, p.id, now);
+        if (!testTo) await repo.recordDigest(p.tenantId, p.id, now);
         log({
           event: "digest",
           profile: p.id,
@@ -408,6 +418,7 @@ async function main() {
           secondLook: d.secondLook.length,
           signals: d.signals?.length ?? 0,
           emailed,
+          test: Boolean(testTo),
         });
       }
     } else {

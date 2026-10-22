@@ -2,6 +2,8 @@
 
 ## 0.4.3 (2026-10-22)
 
+- Test send: set `RADAR_TEST_RECIPIENT` (one address) and `RADAR_TEST_UNTIL` (ISO time) on the worker to send the next run's email only to that address, subject marked [TEST], without recording it as delivered, so the real recipients' next email is unchanged. Expires on its own.
+
 From ISF's review of the first emails:
 
 - "Strong matches still open" is now the first section after "At a glance", and it holds every open strong match, best fit first: new today, closing this week, or carried over. Each card says why it is there ("New today", "Closes within 7 days"). Those bids are no longer repeated under New matches or Closing within 7 days, which now list the rest.
