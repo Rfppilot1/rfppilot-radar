@@ -18,7 +18,13 @@ if (process.env.DATABASE_URL) {
   );
 }
 
-const app = buildApp({ repo, auth, logger: true });
+// Email yes/no pages are on only when a signing secret is set (RADAR_FEEDBACK_SECRET, 32+ characters).
+const app = buildApp({
+  repo,
+  auth,
+  logger: true,
+  feedbackSecret: process.env.RADAR_FEEDBACK_SECRET || undefined,
+});
 const port = Number(process.env.PORT ?? 8080);
 await app.listen({ host: "0.0.0.0", port });
 

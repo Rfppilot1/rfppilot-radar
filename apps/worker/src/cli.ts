@@ -22,7 +22,10 @@ import {
   renderDigestText,
   type Opportunity,
   type SourceId,
+  type FeedbackVote,
   fallbackSummary,
+  feedbackUrl,
+  signFeedbackToken,
 } from "@radar/core";
 import {
   MemoryRepository,
@@ -327,6 +330,11 @@ async function main() {
           ? new AnthropicSummarizer(process.env.ANTHROPIC_API_KEY)
           : null;
       const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1000 });
+      // Yes/No feedback links: on only when both the signing secret and the API's public address are set.
+      const feedback =
+        process.env.RADAR_FEEDBACK_SECRET && process.env.RADAR_PUBLIC_URL
+          ? { secret: process.env.RADAR_FEEDBACK_SECRET, baseUrl: process.env.RADAR_PUBLIC_URL }
+          : null;
       const unsubscribe = `mailto:${process.env.RADAR_UNSUBSCRIBE_EMAIL ?? "radar-unsubscribe@rfppilot.com"}?subject=unsubscribe`;
       // One FEMA lookup per (states, since) per run, shared across profiles.
       const signalCache = new Map<string, Promise<Awaited<ReturnType<typeof recentSignals>>>>();
@@ -384,14 +392,32 @@ async function main() {
         let emailed = false;
         const to = recipientsFor(recipientOverrides, p.tenantId, p.id, p.delivery.email);
         if (mailer && to.length > 0) {
+          const subject = digestSubject(p.name, d.newMatches.length, d.closingSoon.length, now);
           try {
-            await mailer.send({
-              to,
-              subject: digestSubject(p.name, d.newMatches.length, d.closingSoon.length, now),
-              html,
-              text,
-              unsubscribe,
-            });
+            if (feedback) {
+              // Yes/No links are signed per recipient, so each person gets their own copy.
+              for (const r of to) {
+                const opts = {
+                  feedback: (opportunityId: string, vote?: FeedbackVote) =>
+                    feedbackUrl(
+                      feedback.baseUrl,
+                      signFeedbackToken(
+                        { t: p.tenantId, p: p.id, o: opportunityId, r },
+                        feedback.secret,
+                        now,
+                      ),
+                      vote,
+                    ),
+                };
+                await mailer.send({
+                  to: [r],
+                  subject,
+                  html: renderDigestHtml(d, opts),
+                  text: renderDigestText(d, 5, opts),
+                  unsubscribe,
+                });
+              }
+            } else await mailer.send({ to, subject, html, text, unsubscribe });
             emailed = true;
           } catch (err) {
             // Not recorded as delivered, so tomorrow's digest still includes today's new items.

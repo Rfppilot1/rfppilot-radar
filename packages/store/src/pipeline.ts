@@ -1,6 +1,8 @@
 import {
   FirmProfile,
   applyReview,
+  feedbackExamples,
+  feedbackHash,
   resolveScoring,
   daysBetween,
   diffOpportunity,
@@ -106,7 +108,14 @@ export async function rescoreProfile(
       })
     ).map((m) => [m.opportunityId, m] as const),
   );
-  const pHash = profileHash(profile);
+  // The firm's own yes/no calls inform the reviewer; a review is redone when that feedback changes.
+  const decisions = o.reviewer ? await repo.listDecisions(profile.tenantId, profile.id) : [];
+  const examples = decisions.length
+    ? feedbackExamples(decisions, await repo.getOpportunities(decisions.map((d) => d.opportunityId)))
+    : [];
+  const pHash = examples.length
+    ? `${profileHash(profile)}:fb-${feedbackHash(examples)}`
+    : profileHash(profile);
   const { bands } = resolveScoring(profile);
   let budget = o.maxReviews ?? 50;
   const matches: Match[] = [];
@@ -120,7 +129,7 @@ export async function rescoreProfile(
       } else if (budget > 0) {
         budget--;
         try {
-          m = applyReview(m, await o.reviewer.review(opp, profile), key, bands);
+          m = applyReview(m, await o.reviewer.review(opp, profile, examples), key, bands);
         } catch (err) {
           o.onReviewError?.(opp.id, err as Error);
         }

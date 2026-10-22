@@ -1,5 +1,6 @@
 import {
   parseVerdict,
+  type FeedbackExample,
   reviewPrompt,
   type FirmProfile,
   type Opportunity,
@@ -21,7 +22,7 @@ export class AnthropicReviewer implements RelevanceReviewer {
     this.id = `Claude (${model})`;
   }
 
-  async review(opp: Opportunity, profile: FirmProfile): Promise<ReviewVerdict> {
+  async review(opp: Opportunity, profile: FirmProfile, feedback?: FeedbackExample[]): Promise<ReviewVerdict> {
     const res = await this.fetchImpl("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -33,7 +34,7 @@ export class AnthropicReviewer implements RelevanceReviewer {
       body: JSON.stringify({
         model: this.model,
         max_tokens: 1024,
-        messages: [{ role: "user", content: reviewPrompt(opp, profile) }],
+        messages: [{ role: "user", content: reviewPrompt(opp, profile, feedback) }],
       }),
     });
     if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${(await res.text()).slice(0, 200)}`);

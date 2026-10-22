@@ -399,3 +399,80 @@ describe.each(impls)("%s repository", (_name, make) => {
     expect((await repo.getOpportunity("tx-esbd:7"))?.codes).toHaveLength(1);
   });
 });
+
+describe("feedback-informed review", () => {
+  it("passes the firm's own calls to the reviewer and redoes a cached review when that feedback changes", async () => {
+    const { MemoryRepository: Repo, rescoreProfile: rescore } = await import("../src/index.js");
+    const { FirmProfile: FP } = await import("@radar/core");
+    const repo = new Repo();
+    const NOW2 = "2026-10-15T14:00:00.000Z";
+    const mk = (id: string, title: string) => ({
+      id,
+      source: "tx-esbd" as const,
+      sourceRecordId: id,
+      solicitationNumber: id,
+      title,
+      description: null,
+      kind: "rfp" as const,
+      kindLabel: null,
+      status: "open" as const,
+      buyer: { name: "Some Agency", id: null, level: "state" as const },
+      state: "TX",
+      postedAt: NOW2,
+      dueAt: "2026-12-01T20:00:00.000Z",
+      dueTimezone: "America/Chicago",
+      codes: [],
+      setAside: null,
+      contact: null,
+      documents: [],
+      version: 1,
+      hasAddendum: false,
+      keyDates: [],
+      estimatedValue: null,
+      provenance: {
+        source: "tx-esbd" as const,
+        sourceUrl: `https://www.txsmartbuy.gov/esbd/${id}`,
+        fetchedAt: NOW2,
+        contentHash: id.padEnd(64, "0"),
+        basis: "tx-esbd",
+      },
+    });
+    await repo.upsertOpportunities(
+      [mk("tx-esbd:a", "Program evaluation"), mk("tx-esbd:b", "Grant management")],
+      NOW2,
+    );
+    const p = FP.parse({
+      id: "isf-main",
+      tenantId: "isf",
+      name: "ISF",
+      states: ["TX"],
+      codes: [],
+      capabilities: [{ phrase: "program evaluation" }],
+      exclusions: [],
+    });
+    await repo.upsertProfile(p, NOW2);
+    const seen: number[] = [];
+    const reviewer = {
+      id: "fake",
+      review: async (_o: unknown, _p: unknown, fb?: unknown[]) => {
+        seen.push(fb?.length ?? 0);
+        return { verdict: "maybe" as const, rationale: "ok", reviewer: "fake" };
+      },
+    };
+    await rescore(repo, p, NOW2, { reviewer });
+    const first = seen.length;
+    await rescore(repo, p, NOW2, { reviewer });
+    expect(seen.length).toBe(first); // cached
+    await repo.saveDecision("isf", {
+      opportunityId: "tx-esbd:b",
+      profileId: "isf-main",
+      decision: "pass",
+      reason: "Not our work",
+      decidedBy: "x@y.z",
+      decidedAt: NOW2,
+    });
+    await rescore(repo, p, NOW2, { reviewer });
+    expect(seen.length).toBeGreaterThan(first); // feedback changed, so reviews are redone
+    expect(seen.at(-1)).toBe(1);
+  });
+});

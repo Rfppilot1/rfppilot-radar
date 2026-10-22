@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased (branch feature/feedback-yes-no; not deployed)
+
+- Yes/No feedback on every card in the email. Each button opens a small page (signed link per recipient, valid 45 days, no login) where the reader confirms "good fit" / "not a fit" and can add one sentence on why. Opening the link records nothing (mail scanners open every link); only pressing "Save answer" does.
+- A "No" is stored as a pass (the bid drops out of later emails unless the posting changes); a "Yes" as watch (Radar keeps tracking it and reports changes). Reason and recipient are kept with the decision.
+- The AI reviewer now sees the firm's 20 most recent calls (titles, yes/no, reasons) for the same profile only, and cached reviews are redone when that feedback changes.
+- Off unless both `RADAR_FEEDBACK_SECRET` (32+ characters, on the API and the worker) and `RADAR_PUBLIC_URL` (the API's public https address, worker) are set. With feedback on, the worker sends one email per recipient.
+
 ## 0.4.3 (2026-10-22)
 
 From ISF's review of the first emails:
