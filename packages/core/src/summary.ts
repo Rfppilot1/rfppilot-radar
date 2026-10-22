@@ -1,6 +1,6 @@
 import { displayAgency } from "./names.js";
 import { changeLine } from "./changes.js";
-import type { Digest, DigestEntry } from "./digest.js";
+import { strongestOpen, type Digest, type DigestEntry } from "./digest.js";
 import { keyDateLabel, upcomingKeyDates } from "./keydates.js";
 import { clipSentence } from "./review-ai.js";
 import { formatValue } from "./value.js";
@@ -29,6 +29,13 @@ export function summaryFacts(d: Digest, maxItems = 6): string {
     lines.push(
       `Read today: ${d.glance.screened} open solicitations; ${d.glance.strong} strong, ${d.glance.possible} possible, ${d.glance.notFit} screened out.`,
     );
+  const strong = strongestOpen(d);
+  const strongIds = new Set(strong.map((e) => e.opportunity.id));
+  if (strong.length) {
+    lines.push(`Strongest open opportunities (${strong.length}), highest fit first:`);
+    for (const e of strong.slice(0, maxItems))
+      lines.push(item(e) + (e.tags.length ? ` | ${e.tags.join("; ")}` : ""));
+  } else lines.push("Strongest open opportunities: none today.");
   if (d.changed?.length) {
     lines.push(`Changed since last email (${d.changed.length}):`);
     for (const c of d.changed.slice(0, maxItems))
@@ -36,18 +43,16 @@ export function summaryFacts(d: Digest, maxItems = 6): string {
         `- "${c.opportunity.title}" | ${displayAgency(c.opportunity.buyer.name)}: ${c.changes.map(changeLine).join("; ")}`,
       );
   }
-  if (d.newMatches.length) {
-    lines.push(`New matches (${d.newMatches.length}), highest fit first:`);
-    for (const e of [...d.newMatches].sort((a, b) => b.match.score - a.match.score).slice(0, maxItems))
+  const newRest = d.newMatches.filter((e) => !strongIds.has(e.opportunity.id));
+  if (newRest.length) {
+    lines.push(`Other new matches (${newRest.length}), highest fit first:`);
+    for (const e of [...newRest].sort((a, b) => b.match.score - a.match.score).slice(0, maxItems))
       lines.push(item(e));
   }
-  if (d.strongOpen?.length) {
-    lines.push(`Strong matches still open from earlier emails (${d.strongOpen.length}):`);
-    for (const e of d.strongOpen.slice(0, maxItems)) lines.push(item(e));
-  }
-  if (d.closingSoon.length) {
-    lines.push(`Closing within 7 days (${d.closingSoon.length}):`);
-    for (const e of d.closingSoon.slice(0, maxItems)) lines.push(item(e));
+  const closingRest = d.closingSoon.filter((e) => !strongIds.has(e.opportunity.id));
+  if (closingRest.length) {
+    lines.push(`Other bids closing within 7 days (${closingRest.length}):`);
+    for (const e of closingRest.slice(0, maxItems)) lines.push(item(e));
   }
   return lines.join("\n");
 }
@@ -64,9 +69,12 @@ export function summaryPrompt(d: Digest): string {
     `</facts>`,
     ``,
     `Write two or three short, plain sentences, under 350 characters in total, no greeting, no bullet points,`,
-    `no markdown. Lead with the most actionable item: a changed deadline, cancellation or mandatory meeting on a`,
-    `tracked bid first, then the strongest new match, then anything closing soon. If there is no strong new match, you may name the best strong match still open. Name bids by a short form of`,
-    `their title and their agency. If nothing changed and nothing is new, say so in one sentence.`,
+    `no markdown.`,
+    `The FIRST sentence must always be about the strongest open opportunities: name the top one (or two) by a`,
+    `short form of the title and the agency, with its fit and due date. If the facts say there are none, the first`,
+    `sentence says there is no strong open match today.`,
+    `Only after that, cover what changed or was removed (changed deadlines, cancellations, withdrawals, mandatory`,
+    `meetings), then other new matches or anything closing soon, as space allows.`,
   ].join("\n");
 }
 
@@ -95,18 +103,21 @@ export function fallbackSummary(d: Digest): string | null {
   const name = (e: DigestEntry) =>
     `${e.opportunity.title} (${displayAgency(e.opportunity.buyer.name)}, fit ${Math.round(e.match.score)}, due ${due(e.opportunity.dueAt)})`;
   const parts: string[] = [];
+  const strong = strongestOpen(d);
+  if (strong.length)
+    parts.push(
+      `Strongest open opportunit${strong.length === 1 ? "y" : "ies"}: ${strong
+        .slice(0, 2)
+        .map(name)
+        .join("; ")}.`,
+    );
+  else parts.push("No strong open match today.");
   if (d.changed?.length)
     parts.push(
       `${d.changed.length} tracked bid${d.changed.length === 1 ? "" : "s"} changed since the last email.`,
     );
-  const best = [...d.newMatches].sort((a, b) => b.match.score - a.match.score)[0];
-  if (best)
-    parts.push(
-      `${d.newMatches.length} new match${d.newMatches.length === 1 ? "" : "es"}; the best is ${name(best)}.`,
-    );
-  else if (d.strongOpen?.length)
-    parts.push(`No new strong matches; the best open one is ${name(d.strongOpen[0]!)}.`);
-  else parts.push("No new matches today.");
+  if (d.newMatches.length)
+    parts.push(`${d.newMatches.length} new match${d.newMatches.length === 1 ? "" : "es"} today.`);
   const soon = [...d.closingSoon].sort((a, b) =>
     (a.opportunity.dueAt ?? "").localeCompare(b.opportunity.dueAt ?? ""),
   )[0];

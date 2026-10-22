@@ -139,7 +139,7 @@ describe("explanations", () => {
 });
 
 describe("fallback brief", () => {
-  it("writes a brief from the digest alone, naming the best open strong match and the soonest deadline", async () => {
+  it("writes a brief from the digest alone, leading with the strongest open match, then the soonest deadline", async () => {
     const { fallbackSummary } = await import("../src/index.js");
     const entry = (title: string, score: number, dueAt: string) => ({
       opportunity: opp({ title, dueAt, buyer: { name: "DEPT OF DEFENSE", id: null, level: "federal" } }),
@@ -155,7 +155,7 @@ describe("fallback brief", () => {
       secondLook: [],
     });
     expect(text).toBe(
-      "No new strong matches; the best open one is IV&V (Dept of Defense, fit 75, due Oct 30). Closing soonest: Exam (Dept of Defense, fit 47, due Oct 19).",
+      "Strongest open opportunity: IV&V (Dept of Defense, fit 75, due Oct 30). Closing soonest: Exam (Dept of Defense, fit 47, due Oct 19).",
     );
   });
 });
@@ -192,5 +192,54 @@ describe("estimated value", () => {
     expect(formatValue({ amount: 59500, basis: "agency_estimate", text: null })).toBe("$59.5K");
     expect(valueFromText("A bid bond of $50,000 is required.")).toBeNull();
     expect(valueFromText("Hourly rates up to $150 per hour.")).toBeNull();
+  });
+});
+
+describe("strongest first", () => {
+  it("puts every open strong match first, best fit first, and leads the brief facts with them", async () => {
+    const { renderDigestHtml, renderDigestText, strongestOpen, summaryFacts, summaryPrompt } =
+      await import("../src/index.js");
+    const entry = (title: string, score: number, dueAt: string) => ({
+      opportunity: opp({
+        id: `tx-esbd:${title}`,
+        title,
+        dueAt,
+        buyer: { name: "DEPT OF DEFENSE", id: null, level: "federal" },
+      }),
+      match: { score, band: score >= 55 ? "strong" : "possible", reasons: [] } as never,
+    });
+    const newStrong = entry("Fresh IV&V", 80, "2026-11-20T20:00:00.000Z");
+    const newPossible = entry("Maybe Audit", 50, "2026-11-21T20:00:00.000Z");
+    const closingStrong = entry("Closing PMO", 60, "2026-10-19T20:00:00.000Z");
+    const older = entry("Older QA", 70, "2026-12-01T20:00:00.000Z");
+    const d = {
+      profileName: "ISF, Inc.",
+      generatedAt: NOW,
+      glance: { screened: 10, strong: 3, possible: 1, notFit: 6, bySource: {} },
+      changed: [],
+      newMatches: [newStrong, newPossible],
+      closingSoon: [closingStrong],
+      strongOpen: [older],
+      intel: [],
+      secondLook: [],
+    };
+    const strong = strongestOpen(d);
+    expect(strong.map((e) => e.opportunity.title)).toEqual(["Fresh IV&V", "Older QA", "Closing PMO"]);
+    expect(strong[0]!.tags).toEqual(["New today"]);
+    expect(strong[2]!.tags).toEqual(["Closes within 7 days"]);
+
+    const t = renderDigestText(d);
+    expect(t.indexOf("Strong matches still open (3)")).toBeLessThan(t.indexOf("New matches (1)"));
+    expect(t).not.toContain("Closing within 7 days");
+
+    const html = renderDigestHtml(d);
+    expect(html.indexOf("AT A GLANCE")).toBeLessThan(html.indexOf("Strong matches still open (3)"));
+    expect(html.indexOf("Strong matches still open (3)")).toBeLessThan(html.indexOf("New matches (1)"));
+
+    const facts = summaryFacts(d);
+    expect(facts.split("\n")[1]).toContain("Strongest open opportunities (3)");
+    expect(summaryPrompt(d)).toContain(
+      "FIRST sentence must always be about the strongest open opportunities",
+    );
   });
 });

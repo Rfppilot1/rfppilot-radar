@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3 (2026-10-22)
+
+From ISF's review of the first emails:
+
+- "Strong matches still open" is now the first section after "At a glance", and it holds every open strong match, best fit first: new today, closing this week, or carried over. Each card says why it is there ("New today", "Closes within 7 days"). Those bids are no longer repeated under New matches or Closing within 7 days, which now list the rest.
+- "Today in brief" always opens with the strongest open opportunities (title, agency, fit, due date); changes, cancellations and removals come after. The fallback brief follows the same order.
+
 ## 0.4.2 (2026-10-19)
 
 - "Today in brief" is always present: when the AI summary is unavailable or comes back empty, a plain brief is written from the digest's own facts (`summary_fallback` in the run log); an empty AI reply is now logged with its stop reason.

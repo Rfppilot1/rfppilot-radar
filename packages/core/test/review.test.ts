@@ -88,7 +88,10 @@ describe("digest and handoff", () => {
 
   it("renders a text digest with title, buyer, due date and fit", () => {
     const t = renderDigestText(digest);
-    expect(t).toContain("New matches (1)");
+    // A strong new match leads the email in the strong section (tagged new) and is not repeated under New.
+    expect(t.indexOf("Strong matches still open (1)")).toBeGreaterThan(0);
+    expect(t).toContain("New today");
+    expect(t).not.toContain("New matches (1)");
     expect(t).toContain(o.title);
     expect(t).toContain("Health and Human Services Commission");
     expect(t).toMatch(/fit \d+/);

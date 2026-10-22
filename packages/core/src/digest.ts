@@ -115,32 +115,69 @@ function glanceLine(g: DigestGlance): string {
   return `${plural(g.screened, "open solicitation")} read; ${g.strong} strong, ${g.possible} possible, ${g.notFit} screened out.`;
 }
 
+/** A strong match shown in the top section, with why it is flagged ("New today", "Closes within 7 days"). */
+export interface StrongEntry extends DigestEntry {
+  tags: string[];
+}
+
+/**
+ * Every open strong match in the digest, best fit first: new today, closing this week, or carried over from
+ * earlier emails. This is the first section after "At a glance", so the strongest opportunities always lead.
+ * Items listed here are left out of the New and Closing sections below so nothing appears twice.
+ */
+export function strongestOpen(d: Digest, limit = 10): StrongEntry[] {
+  const newIds = new Set(d.newMatches.map((e) => e.opportunity.id));
+  const closingIds = new Set(d.closingSoon.map((e) => e.opportunity.id));
+  const seen = new Map<string, DigestEntry>();
+  for (const e of [...d.newMatches, ...d.closingSoon, ...(d.strongOpen ?? [])])
+    if (e.match.band === "strong" && !seen.has(e.opportunity.id)) seen.set(e.opportunity.id, e);
+  return [...seen.values()]
+    .sort((a, b) => b.match.score - a.match.score)
+    .slice(0, limit)
+    .map((e) => ({
+      ...e,
+      tags: [
+        ...(newIds.has(e.opportunity.id) ? ["New today"] : []),
+        ...(closingIds.has(e.opportunity.id) ? ["Closes within 7 days"] : []),
+      ],
+    }));
+}
+
+/** The digest's sections after the strong list is pulled to the top: same entries, minus those shown there. */
+function remaining(d: Digest, strong: StrongEntry[]) {
+  const ids = new Set(strong.map((e) => e.opportunity.id));
+  const keep = (rows: DigestEntry[]) => rows.filter((e) => !ids.has(e.opportunity.id));
+  return { newMatches: keep(d.newMatches), closingSoon: keep(d.closingSoon) };
+}
+
 /** Plain text suitable for SMS or a chat message. Short lines, no markup. */
 export function renderDigestText(d: Digest, maxPerSection = 5): string {
   const lines: string[] = [`RFP Pilot Radar for ${d.profileName}, ${fmtDate(d.generatedAt)}`];
   if (d.summary) lines.push(d.summary);
   if (d.glance) lines.push(glanceLine(d.glance));
-  const section = (title: string, rows: DigestEntry[]) => {
+  const strong = strongestOpen(d);
+  const rest = remaining(d, strong);
+  const section = (title: string, rows: (DigestEntry & { tags?: string[] })[]) => {
     if (rows.length === 0) return;
     lines.push("", `${title} (${rows.length})`);
-    for (const { opportunity: o, match: m } of rows.slice(0, maxPerSection)) {
+    for (const { opportunity: o, match: m, tags } of rows.slice(0, maxPerSection)) {
       lines.push(
-        `- ${o.title} | ${displayAgency(o.buyer.name)} | due ${fmtDate(o.dueAt, d.generatedAt)}${o.estimatedValue ? ` | est. ${formatValue(o.estimatedValue)}` : ""} | fit ${Math.round(m.score)}`,
+        `- ${o.title} | ${displayAgency(o.buyer.name)} | due ${fmtDate(o.dueAt, d.generatedAt)}${o.estimatedValue ? ` | est. ${formatValue(o.estimatedValue)}` : ""} | fit ${Math.round(m.score)}${tags?.length ? ` | ${tags.join(", ")}` : ""}`,
       );
       const kd = upcomingKeyDates(o.keyDates ?? [], d.generatedAt, o.dueAt);
       if (kd.length) lines.push(`  ${kd.map(keyDateLabel).join(" · ")}`);
     }
     if (rows.length > maxPerSection) lines.push(`  +${rows.length - maxPerSection} more in Radar`);
   };
+  section("Strong matches still open", strong);
   if (d.changed?.length) {
     lines.push("", `Changed since last email (${d.changed.length})`);
     for (const c of d.changed.slice(0, maxPerSection))
       lines.push(`- ${c.opportunity.title}: ${c.changes.map(changeLine).join("; ")}`);
     if (d.changed.length > maxPerSection) lines.push(`  +${d.changed.length - maxPerSection} more in Radar`);
   }
-  section("New matches", d.newMatches);
-  section("Closing within 7 days", d.closingSoon);
-  section("Strong matches still open", d.strongOpen ?? []);
+  section("New matches", rest.newMatches);
+  section("Closing within 7 days", rest.closingSoon);
   if (d.secondLook.length > 0) {
     lines.push("", `Second look (${d.secondLook.length})`);
     for (const s of d.secondLook.slice(0, maxPerSection)) lines.push(`- ${s.opportunity.title}: ${s.note}`);
@@ -159,10 +196,12 @@ export function renderDigestMarkdown(d: Digest): string {
   const out: string[] = [`# Radar: ${d.profileName}`, `_${fmtDate(d.generatedAt)}_`, ""];
   if (d.summary) out.push(`**Today in brief:** ${d.summary}`, "");
   if (d.glance) out.push(`**At a glance:** ${glanceLine(d.glance)}`, "");
-  const entry = ({ opportunity: o, match: m }: DigestEntry) => {
+  const strong = strongestOpen(d);
+  const rest = remaining(d, strong);
+  const entry = ({ opportunity: o, match: m, tags }: DigestEntry & { tags?: string[] }) => {
     const x = explain(m, d.bands ?? BANDS);
     return [
-      `**[${o.title}](${o.provenance.sourceUrl})**`,
+      `**[${o.title}](${o.provenance.sourceUrl})**${tags?.length ? ` _${tags.join(" · ")}_` : ""}`,
       metaLine(o, d.generatedAt),
       upcomingKeyDates(o.keyDates ?? [], d.generatedAt, o.dueAt)
         .map((k) => `**${keyDateLabel(k)}**`)
@@ -172,11 +211,12 @@ export function renderDigestMarkdown(d: Digest): string {
       "",
     ].filter(Boolean);
   };
-  const section = (title: string, rows: DigestEntry[]) => {
+  const section = (title: string, rows: (DigestEntry & { tags?: string[] })[]) => {
     if (rows.length === 0) return;
     out.push(`## ${title} (${rows.length})`, "");
     for (const r of rows) out.push(...entry(r), "");
   };
+  section("Strong matches still open", strong);
   if (d.changed?.length) {
     out.push(`## Changed since last email (${d.changed.length})`, "");
     for (const c of d.changed)
@@ -186,9 +226,8 @@ export function renderDigestMarkdown(d: Digest): string {
         "",
       );
   }
-  section("New matches", d.newMatches);
-  section("Closing within 7 days", d.closingSoon);
-  section("Strong matches still open", d.strongOpen ?? []);
+  section("New matches", rest.newMatches);
+  section("Closing within 7 days", rest.closingSoon);
   if (d.secondLook.length > 0) {
     out.push(`## Second look (${d.secondLook.length})`, "");
     for (const s of d.secondLook)
@@ -235,9 +274,20 @@ export function renderDigestHtml(d: Digest): string {
       `</div>`
     );
   };
-  const entries = (rows: DigestEntry[]) =>
+  const tagPills = (tags: string[] = []) =>
+    tags.length
+      ? `<div style="margin-top:4px">` +
+        tags
+          .map(
+            (t) =>
+              `<span style="display:inline-block;background:#E8F1FB;color:#0E2F6C;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;margin-right:4px">${esc(t)}</span>`,
+          )
+          .join("") +
+        `</div>`
+      : "";
+  const entries = (rows: (DigestEntry & { tags?: string[] })[]) =>
     rows
-      .map(({ opportunity: o, match: m }) =>
+      .map(({ opportunity: o, match: m, tags }) =>
         card(
           o.title,
           o.provenance.sourceUrl,
@@ -245,10 +295,12 @@ export function renderDigestHtml(d: Digest): string {
           explainHtml(m, d.bands ?? BANDS),
           Math.round(m.score),
           m.band,
-          keyDatesHtml(o, d.generatedAt),
+          tagPills(tags) + keyDatesHtml(o, d.generatedAt),
         ),
       )
       .join("");
+  const strong = strongestOpen(d);
+  const rest = remaining(d, strong);
   const changedCards = (rows: DigestChange[]) =>
     rows
       .map(({ opportunity: o, match: m, changes }) =>
@@ -282,13 +334,13 @@ export function renderDigestHtml(d: Digest): string {
         `<div style="font-size:14px;line-height:1.5;margin-top:4px;color:#1B2433">${esc(d.summary)}</div></div>`,
     );
   if (d.glance) parts.push(glanceHtml(d, font));
+  if (strong.length) parts.push(h2(`Strong matches still open (${strong.length})`), entries(strong));
   if (d.changed?.length)
     parts.push(h2(`Changed since last email (${d.changed.length})`), changedCards(d.changed));
-  if (d.newMatches.length) parts.push(h2(`New matches (${d.newMatches.length})`), entries(d.newMatches));
-  if (d.closingSoon.length)
-    parts.push(h2(`Closing within 7 days (${d.closingSoon.length})`), entries(d.closingSoon));
-  if (d.strongOpen?.length)
-    parts.push(h2(`Strong matches still open (${d.strongOpen.length})`), entries(d.strongOpen));
+  if (rest.newMatches.length)
+    parts.push(h2(`New matches (${rest.newMatches.length})`), entries(rest.newMatches));
+  if (rest.closingSoon.length)
+    parts.push(h2(`Closing within 7 days (${rest.closingSoon.length})`), entries(rest.closingSoon));
   if (d.secondLook.length)
     parts.push(
       h2(`Second look (${d.secondLook.length})`),
