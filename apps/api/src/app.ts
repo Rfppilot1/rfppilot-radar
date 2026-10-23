@@ -191,7 +191,19 @@ export function openApiDocument() {
 export function buildApp(deps: AppDeps): FastifyInstance {
   const now = deps.now ?? (() => new Date().toISOString());
   const app = Fastify({
-    logger: deps.logger ? { redact: ["req.headers.authorization"] } : false,
+    logger: deps.logger
+      ? {
+          redact: ["req.headers.authorization"],
+          // Feedback links carry a signed token in the query string; never write it to the logs.
+          serializers: {
+            req: (req: { method: string; url: string; id?: string }) => ({
+              id: req.id,
+              method: req.method,
+              url: req.url.replace(/([?&]token=)[^&]*/g, "$1[redacted]"),
+            }),
+          },
+        }
+      : false,
     bodyLimit: 256 * 1024,
   });
 
