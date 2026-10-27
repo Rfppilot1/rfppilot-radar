@@ -9,7 +9,7 @@ import { z } from "zod";
  *  - Nothing is inferred into a field that the source did not state. Unknown stays null.
  */
 
-export const SourceId = z.enum(["sam-gov", "tx-esbd", "fl-mfmp", "openfema"]);
+export const SourceId = z.enum(["sam-gov", "tx-esbd", "fl-mfmp", "openfema", "opengov", "bonfire"]);
 export type SourceId = z.infer<typeof SourceId>;
 
 /** Classification systems used by public buyers. Florida uses UNSPSC, Texas uses NIGP, federal uses NAICS/PSC. */
@@ -193,6 +193,7 @@ export const ScoringOverrides = z
         capability: points(0, 100),
         capabilityTitleMultiplier: points(1, 5),
         capabilityCap: points(0, 100),
+        uncodedCapabilityBonusCap: points(0, 100),
         knownBuyer: points(0, 100),
         exclusion: points(-100, 0),
         tightTiming: points(-100, 0),

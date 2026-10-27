@@ -90,7 +90,7 @@ const kindText = (o: Opportunity) => o.kindLabel ?? KIND_LABEL[o.kind];
 
 /** Source · buyer · notice type · due date · estimated value (when the posting states one). */
 const metaLine = (o: Opportunity, ref: string) =>
-  `${SOURCE_LABEL[o.source]} · ${displayAgency(o.buyer.name)} · ${kindText(o)} · due ${fmtDate(o.dueAt, ref)}` +
+  `${sourceLabel(o)} · ${displayAgency(o.buyer.name)} · ${kindText(o)} · due ${fmtDate(o.dueAt, ref)}` +
   (o.estimatedValue ? ` · Est. ${formatValue(o.estimatedValue)}` : "");
 
 const SOURCE_LABEL: Record<Opportunity["source"], string> = {
@@ -98,7 +98,17 @@ const SOURCE_LABEL: Record<Opportunity["source"], string> = {
   "tx-esbd": "Texas",
   "fl-mfmp": "Florida",
   openfema: "FEMA",
+  opengov: "Local (OpenGov)",
+  bonfire: "Local (Bonfire)",
 };
+
+const STATE_NAME: Record<string, string> = { FL: "Florida", TX: "Texas" };
+
+/** Local portals read buyers in several states, so their label names the state ("Florida local"). */
+const sourceLabel = (o: Opportunity) =>
+  o.source === "opengov" || o.source === "bonfire"
+    ? `${(o.state && STATE_NAME[o.state]) ?? o.state ?? "Local"} local`
+    : SOURCE_LABEL[o.source];
 
 /** Fit colors shared by the glance panel and the score pills: green strong, amber possible, red below the bar. */
 export const FIT_COLORS = {
