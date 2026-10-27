@@ -159,6 +159,8 @@ async function ingest(repo: Repository, sources: SourceId[], max?: number) {
         updated: r.updated.length,
         closed: r.closed.length,
         rejected: run.rejected.length,
+        // The first few rejects, so a failing portal or record shape shows up in the run log.
+        rejectedSample: run.rejected.slice(0, 3),
         complete: run.complete,
       });
     } catch (err) {
