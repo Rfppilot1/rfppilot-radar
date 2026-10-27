@@ -24,14 +24,17 @@ export interface BonfirePortal {
   timezone: string;
 }
 
-/** Confirmed Florida portals (Oct 27, 2026). Add one only after opening its public portal page. */
+/**
+ * Confirmed Florida portals (Oct 27, 2026). Add one only after opening its public portal page and running the
+ * "Live source check" workflow: a portal that refuses server requests (FAU answered 429 to every retry) keeps
+ * every run incomplete, and incomplete runs never close postings that left the portal.
+ */
 export const BONFIRE_PORTALS: BonfirePortal[] = [
   { org: "hillsboroughcounty", name: "Hillsborough County", state: "FL", timezone: "America/New_York" },
   { org: "broward", name: "Broward County", state: "FL", timezone: "America/New_York" },
   { org: "pascocountyfl", name: "Pasco County", state: "FL", timezone: "America/New_York" },
   { org: "talgov", name: "City of Tallahassee", state: "FL", timezone: "America/New_York" },
   { org: "ucfprocurement", name: "University of Central Florida", state: "FL", timezone: "America/New_York" },
-  { org: "fau", name: "Florida Atlantic University", state: "FL", timezone: "America/New_York" },
 ];
 
 const BONFIRE_PARSE_VERSION = 1;

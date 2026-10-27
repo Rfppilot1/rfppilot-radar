@@ -9,8 +9,6 @@ on:
       sources:
         description: "Comma-separated source ids"
         default: "opengov,bonfire,fl-mfmp"
-  push:
-    branches: ["feat/fl-local-portals"]
 
 permissions:
   contents: read

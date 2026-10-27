@@ -2,7 +2,7 @@
 
 ## Unreleased: Florida local government portals
 
-- Two new public sources: **OpenGov Procurement** (every Florida government on the platform, discovered automatically: 98 portals and 333 open projects on Oct 27, 2026, including Orange, Volusia, Collier, Pinellas and Sarasota counties, Tampa, Orlando, St. Petersburg, airports, utilities and school districts) and **Bonfire** (Broward, Hillsborough and Pasco counties, Tallahassee, UCF, FAU). Both read the same public JSON the portal pages use; no sign-in.
+- Two new public sources: **OpenGov Procurement** (every Florida government on the platform, discovered automatically: 98 portals and 333 open projects on Oct 27, 2026, including Orange, Volusia, Collier, Pinellas and Sarasota counties, Tampa, Orlando, St. Petersburg, airports, utilities and school districts) and **Bonfire** (Broward, Hillsborough and Pasco counties, Tallahassee, UCF; FAU is left out because it rate-limits server requests). Both read the same public JSON the portal pages use; no sign-in.
 - Florida's state-agency feed (MFMP) carries state agencies only, about 134 biddable ads; counties, cities and school districts post on their own portals. Texas ESBD already includes locals, which is why digests skewed to Texas.
 - Scoring: local portals publish no classification codes, so they could never earn the code points a coded state posting earns for the same work. When a record has no codes, half its capability points (capped at 20, `uncodedCapabilityBonusCap`) now stand in. Scorer version 2026.10.2.
 - ISF profile: six more UNSPSC prefixes Florida agencies use for ISF-type work (management support, MIS, data services, system administration, software maintenance, audit services).
