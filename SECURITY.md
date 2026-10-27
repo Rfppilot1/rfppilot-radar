@@ -31,3 +31,9 @@
 ## Reporting
 
 Email security@rfppilot.com. Do not open public issues for vulnerabilities.
+
+## Accepted advisories
+
+| Advisory                                                                            | Package                                                           | Why accepted                                                                                                                                                                                                  | Exit                                                                                        |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) (Oct 2026) | zod 3.x (memory use validating oversized constrained collections) | Fixed only in zod 4.6.6+, a major-version migration (record and default semantics change). The API caps request bodies at 256 KB (16 KB on the feedback form), which bounds what any validator can be handed. | Migrate to zod 4 and remove the ignore from `package.json` (`pnpm.auditConfig.ignoreGhsas`) |

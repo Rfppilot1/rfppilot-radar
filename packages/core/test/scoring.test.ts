@@ -48,6 +48,25 @@ describe("scoreOpportunity", () => {
     expect(m.band).toBe("excluded");
   });
 
+  it("lets capability matches stand in for classification codes on sources that publish none", () => {
+    const base = {
+      title: "Organizational Assessment",
+      buyer: { name: "City of Tampa", id: "cityoftampa", level: "local" as const },
+    };
+    const coded = scoreOpportunity(
+      opp({ ...base, codes: [{ system: "NIGP", code: "00000", description: null }] }),
+      PROFILE,
+      { now: NOW },
+    );
+    const uncoded = scoreOpportunity(opp({ ...base, codes: [] }), PROFILE, { now: NOW });
+    const bonus = uncoded.reasons.find((r) => /publishes no classification codes/.test(r.detail));
+    expect(bonus?.factor).toBe("capability");
+    expect(bonus!.points).toBeGreaterThan(0);
+    expect(bonus!.points).toBeLessThanOrEqual(20);
+    expect(coded.reasons.some((r) => /publishes no classification codes/.test(r.detail))).toBe(false);
+    expect(uncoded.score).toBeGreaterThan(coded.score);
+  });
+
   it("gives zero to records with no code or capability signal, even with kind and buyer points", () => {
     const m = scoreOpportunity(opp({ title: "Fleet Vehicles", codes: [] }), PROFILE, { now: NOW });
     expect(m.score).toBe(0);

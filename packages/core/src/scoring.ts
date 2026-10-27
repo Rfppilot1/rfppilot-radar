@@ -17,7 +17,7 @@ import { daysBetween, hasPhrase, normalize } from "./text.js";
  * opportunity surfaced (or did not). Bump SCORER_VERSION whenever weights or rules change; stored matches
  * record the version that produced them.
  */
-export const SCORER_VERSION = "2026.10.1";
+export const SCORER_VERSION = "2026.10.2";
 
 export const WEIGHTS = {
   codePrimary: 35,
@@ -26,6 +26,12 @@ export const WEIGHTS = {
   capability: 12,
   capabilityTitleMultiplier: 1.5,
   capabilityCap: 45,
+  /**
+   * Many local portals (OpenGov, Bonfire) publish no classification codes at all, so a posting there can never
+   * earn the code points a coded state posting earns for the same work. When a record carries no codes, half its
+   * capability points (up to this cap) stand in for the missing classification.
+   */
+  uncodedCapabilityBonusCap: 20,
   knownBuyer: 8,
   exclusion: -40,
   tightTiming: -15,
@@ -168,6 +174,15 @@ export function scoreOpportunity(
       points: round(Math.min(WEIGHTS_.capabilityCap, capPoints)),
       detail: `Matches capabilities: ${capHits.join(", ")}`,
     });
+    if (opp.codes.length === 0) {
+      const bonus = round(Math.min(WEIGHTS_.uncodedCapabilityBonusCap, capPoints / 2));
+      if (bonus > 0)
+        reasons.push({
+          factor: "capability",
+          points: bonus,
+          detail: "The source publishes no classification codes, so capability matches stand in for them",
+        });
+    }
   }
 
   // Exclusions.

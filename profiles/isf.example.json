@@ -49,6 +49,42 @@
       "label": "Software or hardware engineering"
     },
     {
+      "system": "UNSPSC",
+      "prefix": "801615",
+      "weight": 0.7,
+      "label": "Management support services"
+    },
+    {
+      "system": "UNSPSC",
+      "prefix": "811117",
+      "weight": 0.7,
+      "label": "Management information systems (MIS)"
+    },
+    {
+      "system": "UNSPSC",
+      "prefix": "811120",
+      "weight": 0.6,
+      "label": "Data services"
+    },
+    {
+      "system": "UNSPSC",
+      "prefix": "811118",
+      "weight": 0.5,
+      "label": "System administration services"
+    },
+    {
+      "system": "UNSPSC",
+      "prefix": "811122",
+      "weight": 0.5,
+      "label": "Software maintenance and support"
+    },
+    {
+      "system": "UNSPSC",
+      "prefix": "841116",
+      "weight": 0.5,
+      "label": "Audit services"
+    },
+    {
       "system": "PSC",
       "prefix": "R4",
       "weight": 0.8,

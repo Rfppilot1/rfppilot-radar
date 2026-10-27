@@ -1,0 +1,35 @@
+name: Live source check
+
+# Reads the public sources once from a plain server (no browser), the way the Railway worker does, and prints
+# how many open records each returned. Nothing is stored and nothing is sent. Run it by hand after changing a
+# connector, or when a source's counts look off in the digest.
+on:
+  workflow_dispatch:
+    inputs:
+      sources:
+        description: "Comma-separated source ids"
+        default: "opengov,bonfire,fl-mfmp"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Ingest into a throwaway in-memory store
+        env:
+          RADAR_ALLOW_MEMORY: "1"
+        run: |
+          node apps/worker/dist/cli.js ingest --sources "${{ github.event.inputs.sources || 'opengov,bonfire,fl-mfmp' }}" > ingest.log || true
+          # Each source's result as an annotation, readable from the run page and the checks API.
+          grep -E '"event":"(ingest|ingest_failed|source_skipped)"' ingest.log | while read -r line; do echo "::notice title=source::$line"; done

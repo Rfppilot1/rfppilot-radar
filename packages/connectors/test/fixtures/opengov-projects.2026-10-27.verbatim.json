@@ -1,0 +1,135 @@
+{
+  "count": 24,
+  "rows": [
+    {
+      "closedSubstatus": null,
+      "closeOutReason": null,
+      "copyCount": 0,
+      "created_at": "2026-10-13T12:47:39.150Z",
+      "financialId": "27-P-00016",
+      "id": 316374,
+      "isPaused": false,
+      "isPrivate": false,
+      "proposalDeadline": "2026-11-16T20:00:00.000Z",
+      "releaseProjectDate": "2026-10-22T04:00:00.000Z",
+      "status": "open",
+      "summary": "<p>The purpose of this Invitation to Bid is to establish a fixed firm pricing schedule for installing, repairing, and replacing overhead doors, openers, and gates on an as-needed basis. The work included in these specifications shall consist of furnishing all labor, tools, transportation, supervision, equipment, materials, supplies, and incidentals required. Awardee will be required to provide one or more crews on a 24-hour, 7-days-a-week schedule as requested by the City Representative. Additional services needed shall include scheduled preventative maintenance on all doors, closures, gates, and access control systems.</p>",
+      "title": "Overhead Door Services (Bid Discount)",
+      "comingSoon": false,
+      "department": {
+        "id": 8864,
+        "name": "LAM - Facilities"
+      },
+      "addendums": [
+        {
+          "id": 135481
+        }
+      ],
+      "template": {
+        "title": "Invitation to Bid"
+      },
+      "government": {
+        "code": "cityoftampa",
+        "organization": {
+          "logo": "https://assets.procurement.opengov.com/logo-uploads/d7f77997-5fe0-463f-be05-88a6c8444efb_data.png",
+          "address1": "2555 E Hanna Ave",
+          "address2": null,
+          "city": "Tampa",
+          "countryCode": "US",
+          "state": "FL",
+          "zipCode": "33610",
+          "phoneCountry": "1",
+          "phone": "(813)274-8351",
+          "phoneExt": null,
+          "name": "City of Tampa",
+          "website": "https://www.tampa.gov/",
+          "timezone": "America/New_York"
+        }
+      }
+    },
+    {
+      "closedSubstatus": null,
+      "closeOutReason": null,
+      "copyCount": 0,
+      "created_at": "2026-10-05T16:28:33.827Z",
+      "financialId": "27-P-00002",
+      "id": 313053,
+      "isPaused": false,
+      "isPrivate": false,
+      "proposalDeadline": "2026-11-09T20:00:00.000Z",
+      "releaseProjectDate": "2026-10-06T04:00:00.000Z",
+      "status": "open",
+      "summary": "<p>This solicitation for Traffic Signs (Bid-Discount) is for use by various departments within the City of Tampa.</p>",
+      "title": "Traffic Signs (Bid-Discount)",
+      "comingSoon": false,
+      "department": {
+        "id": 7001,
+        "name": "Purchasing"
+      },
+      "addendums": [],
+      "template": {
+        "title": "Invitation to Bid"
+      },
+      "government": {
+        "code": "cityoftampa",
+        "organization": {
+          "logo": "https://assets.procurement.opengov.com/logo-uploads/d7f77997-5fe0-463f-be05-88a6c8444efb_data.png",
+          "address1": "2555 E Hanna Ave",
+          "address2": null,
+          "city": "Tampa",
+          "countryCode": "US",
+          "state": "FL",
+          "zipCode": "33610",
+          "phoneCountry": "1",
+          "phone": "(813)274-8351",
+          "phoneExt": null,
+          "name": "City of Tampa",
+          "website": "https://www.tampa.gov/",
+          "timezone": "America/New_York"
+        }
+      }
+    },
+    {
+      "closedSubstatus": null,
+      "closeOutReason": null,
+      "copyCount": 0,
+      "created_at": "2026-10-05T15:28:25.479Z",
+      "financialId": "27-P-00001",
+      "id": 313013,
+      "isPaused": false,
+      "isPrivate": false,
+      "proposalDeadline": "2026-11-09T20:00:00.000Z",
+      "releaseProjectDate": "2026-10-09T04:00:00.000Z",
+      "status": "open",
+      "summary": "<p><span style=\"font-size: 12.0pt;\">The City of Tampa, FL is seeking a qualified contractor to provide NETA Certified Maintenance Testing and Calibration services for generator switchgear relays. The selected contractor will be responsible for performing comprehensive testing, maintenance, and calibration of the generator switchgear relays to ensure they meet all relevant standards and are operating efficiently and safely. The contractor must be certified by the InterNational Electrical Testing Association (NETA) and adhere to all applicable industry standards and regulations.</span></p>",
+      "title": "Testing and Calibration of Paralleling Switchgear (Bid Discount)",
+      "comingSoon": false,
+      "department": {
+        "id": 7729,
+        "name": "Water Production"
+      },
+      "addendums": [],
+      "template": {
+        "title": "Invitation to Bid"
+      },
+      "government": {
+        "code": "cityoftampa",
+        "organization": {
+          "logo": "https://assets.procurement.opengov.com/logo-uploads/d7f77997-5fe0-463f-be05-88a6c8444efb_data.png",
+          "address1": "2555 E Hanna Ave",
+          "address2": null,
+          "city": "Tampa",
+          "countryCode": "US",
+          "state": "FL",
+          "zipCode": "33610",
+          "phoneCountry": "1",
+          "phone": "(813)274-8351",
+          "phoneExt": null,
+          "name": "City of Tampa",
+          "website": "https://www.tampa.gov/",
+          "timezone": "America/New_York"
+        }
+      }
+    }
+  ]
+}
