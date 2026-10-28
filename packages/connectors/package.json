@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@radar/core": "workspace:*",
+    "node-html-parser": "9.0.4",
     "zod": "^3.25.0"
   }
 }

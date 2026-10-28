@@ -1,0 +1,449 @@
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <!-- Google tag (gtag.js) -->
+    
+    
+    <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>
+	Bids | VendorLink
+</title><link href="../Images/favicon.png" rel="shortcut icon" type="image/x-icon" /><link href="../Content/jquery-ui.css" rel="stylesheet" /><link href="../Content/bootstrap.css?v=1" rel="stylesheet" /><link href="../Content/font-awesome/css/font-awesome.min.css" rel="stylesheet" /><link href="../Content/plugins/datepicker/datepicker3.css" rel="stylesheet" /><link href="../Content/plugins/daterangepicker/daterangepicker-bs3.css" rel="stylesheet" /><link href="../Content/plugins/steps/jquery.steps.css?v=1" rel="stylesheet" /><link href="../Content/plugins/fullcalendar/fullcalendar.css" rel="stylesheet" /><link href="../Content/plugins/tabs-x/bootstrap-tabs-x.css" rel="stylesheet" /><link href="../Content/animate.css" rel="stylesheet" /><link href="../Content/style.css?v=1" rel="stylesheet" /><link href="../Content/custom.css?v=1" rel="stylesheet" />
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
+</head>
+<body>
+    <form method="post" action="./bids" id="aspnetForm" class="m-t" role="form">
+<div class="aspNetHidden">
+<input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="" />
+<input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="" />
+<input type="hidden" name="__LASTFOCUS" id="__LASTFOCUS" value="" />
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="VIEWSTATE_TRIMMED" />
+</div>
+
+
+
+
+
+
+
+
+
+<div class="aspNetHidden">
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="F74C1BF7" />
+	<input type="hidden" name="__SCROLLPOSITIONX" id="__SCROLLPOSITIONX" value="0" />
+	<input type="hidden" name="__SCROLLPOSITIONY" id="__SCROLLPOSITIONY" value="0" />
+</div>
+        
+
+        <div class="navbar navbar-default navbar-fixed-top" role="navigation">
+            <div class="container-fluid">
+                <div class="navbar-header">
+                    <a class="navbar-brand" href="http://www.mylinksystems.com" target="_blank" title="VendorLink">
+                        <img src="../../images/vendorlink_toolbar.png" alt="VendorLink" /></a>
+                    <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                    </button>
+                </div>
+                <!-- Collect the nav links, forms, and other content for toggling -->
+                <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+                    <ul class="nav navbar-nav">
+                        <li id="ctl00_liHome"><a href="home">Home</a></li>
+                        <li id="ctl00_liLogin"><a href="login">Login</a></li>
+                        <li id="ctl00_liRegister"><a href="register">Vendor Registration</a></li>                        
+                        <li id="ctl00_liDirectory"><a href="directory">Vendor Directory</a></li>
+                        <li id="ctl00_liAgency"><a href="agencyr">Agency Registration</a></li>
+                        <li id="ctl00_liSearchSolicitations"><a href="bids">Bids</a></li>
+                        <li id="ctl00_liSearchContracts"><a href="contracts">Contracts</a></li>
+                    </ul>
+                    <ul class="nav navbar-nav navbar-right">                        
+                        <li><a href="help" onclick="window.open(this.href, '_blank', 'height=800,width=800,scrollbars=yes'); return false">Help</a></li>
+                    </ul>
+                </div>
+                <!-- /.navbar-collapse -->
+            </div>
+            <!-- /.container-fluid -->
+        </div>
+        <div id="wrapper" class="container">
+            <!-- /.add two br here before posting -->
+            <br />
+            <br />
+            <div class='alert alert-info hidden'>
+                <strong>VendorLink Email Notifications</strong>
+                <br />
+                If you are having an issue receiving emails from myvendorlink.com, please add <span class="red">vendorlink@myvendorlink.com</span> to your safe senders list. The following links provide directions how to do that with the most common email services: <span class="red"><a href="https://clean.email/blog/email-security/how-to-whitelist-an-email" target="_blank">Outlook</a>, <a href="https://clean.email/blog/email-security/how-to-whitelist-an-email" target="_blank">Gmail</a>,
+                            <a href="https://clean.email/blog/email-security/how-to-whitelist-an-email" target="_blank">Yahoo Mail</a>, <a href="https://clean.email/blog/email-security/how-to-whitelist-an-email" target="_blank">AOL</a>
+                    <a href="https://clean.email/blog/email-security/how-to-whitelist-an-email" target="_blank">Zoho</a>, <a href="https://clean.email/blog/email-security/how-to-whitelist-an-email" target="_blank">ProtonMail</a></span>
+            </div>
+            
+
+    <div class="externalColumns animated fadeInDown">
+        <div class="row">
+            <div class="col-xs-12">
+                <div class="ibox-content">
+                    <div class="row">
+                        <div class="col-xs-12">
+                            <h3>Bids</h3>
+                            <br />
+                            <span id="ctl00_RegionMiddle_lblPageText"></span>
+                            <div id="ctl00_RegionMiddle_UpdatePanel6">
+	
+                                    <div class="row">
+                                        <div class="col-xs-6 b-r">
+                                            <div class="row">
+                                                <div class="col-xs-6">
+                                                    <label>Agency</label>
+                                                    <select name="ctl00$RegionMiddle$ddlAgency" onchange="javascript:setTimeout(&#39;__doPostBack(\&#39;ctl00$RegionMiddle$ddlAgency\&#39;,\&#39;\&#39;)&#39;, 0)" id="ctl00_RegionMiddle_ddlAgency" class="form-control" title="Agency">
+		<option selected="selected" value=""></option>
+		<option value="6">Osceola County Board of County Commissioners</option>
+		<option value="8">Osceola County School Board</option>
+
+	</select>
+                                                </div>
+                                                <div class="col-xs-6">
+                                                    <label>Status</label>
+                                                    <select name="ctl00$RegionMiddle$ddlStatus" id="ctl00_RegionMiddle_ddlStatus" class="form-control" title="Status">
+		<option value=""></option>
+		<option selected="selected" value="2">Active</option>
+		<option value="7">All bids rejected</option>
+		<option value="5">Awarded</option>
+		<option value="6">Canceled</option>
+		<option value="10">Closed/Completed</option>
+		<option value="12">No Bids Received</option>
+		<option value="11">Pending Action</option>
+		<option value="4">Pending Award</option>
+		<option value="3">Under Evaluation</option>
+
+	</select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-xs-6">
+                                            <div class="row">
+                                                <div class="col-xs-6">
+                                                    <label>Title</label>
+                                            <input name="ctl00$RegionMiddle$txtTitle" type="text" id="ctl00_RegionMiddle_txtTitle" class="form-control" title="Title" />
+                                                </div>
+                                                <div class="col-xs-6">
+                                                    <label>Fiscal Year</label>
+                                            <select name="ctl00$RegionMiddle$ddlFiscalYear" id="ctl00_RegionMiddle_ddlFiscalYear" class="form-control" title="Fiscal Year">
+		<option selected="selected" value=""></option>
+		<option value="1993">1993</option>
+		<option value="1994">1994</option>
+		<option value="1996">1996</option>
+		<option value="1998">1998</option>
+		<option value="1999">1999</option>
+		<option value="2000">2000</option>
+		<option value="2001">2001</option>
+		<option value="2002">2002</option>
+		<option value="2003">2003</option>
+		<option value="2004">2004</option>
+		<option value="2005">2005</option>
+		<option value="2006">2006</option>
+		<option value="2007">2007</option>
+		<option value="2008">2008</option>
+		<option value="2009">2009</option>
+		<option value="2010">2010</option>
+		<option value="2011">2011</option>
+		<option value="2012">2012</option>
+		<option value="2013">2013</option>
+		<option value="2014">2014</option>
+		<option value="2015">2015</option>
+		<option value="2016">2016</option>
+		<option value="2017">2017</option>
+		<option value="2018">2018</option>
+		<option value="2019">2019</option>
+		<option value="2020">2020</option>
+		<option value="2021">2021</option>
+		<option value="2022">2022</option>
+		<option value="2023">2023</option>
+		<option value="2024">2024</option>
+		<option value="2025">2025</option>
+		<option value="2026">2026</option>
+		<option value="2027">2027</option>
+		<option value="3000">3000</option>
+
+	</select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-xs-6 b-r">
+                                            <div class="row">
+                                                <div class="col-xs-6">
+                                                    <label>Department <i>(First select an agency above)</i></label>
+                                                    <select name="ctl00$RegionMiddle$ddlDepartment" id="ctl00_RegionMiddle_ddlDepartment" class="form-control" title="Department">
+
+	</select>                                                    
+                                                </div>
+                                                <div class="col-xs-6">
+                                                    <label>Scope of Services</label>
+                                            <input name="ctl00$RegionMiddle$txtNotes" type="text" id="ctl00_RegionMiddle_txtNotes" class="form-control" title="Scope of Services" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-xs-6">
+                                            <div class="row">
+                                                <div class="col-xs-6">
+                                                    <label>Number</label>
+                                            <input name="ctl00$RegionMiddle$txtNumber" type="text" id="ctl00_RegionMiddle_txtNumber" class="form-control" title="Number" />
+                                                </div>
+                                                <div class="col-xs-6">
+                                                    <label>Commodity Keyword</label>
+                                            <input name="ctl00$RegionMiddle$tbCommodityKeyword" type="text" id="ctl00_RegionMiddle_tbCommodityKeyword" class="form-control" title="Commodity Keyword" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                
+</div>
+                            <div class="row">
+                                <div class="col-xs-12">
+                                    <div class="row">
+                                        <div class="col-xs-3">
+                                        </div>
+                                        <div class="col-xs-3 right">
+                                            <label><span id="ctl00_RegionMiddle_lblSolicitationPageCount" class="pagespace">View Count</span></label>
+                                            <div class="radio">
+                                                <table id="ctl00_RegionMiddle_rblSolicitationPageCount" align="right">
+	<tr>
+		<td><input id="ctl00_RegionMiddle_rblSolicitationPageCount_0" type="radio" name="ctl00$RegionMiddle$rblSolicitationPageCount" value="20" /><label for="ctl00_RegionMiddle_rblSolicitationPageCount_0">20</label></td><td><input id="ctl00_RegionMiddle_rblSolicitationPageCount_1" type="radio" name="ctl00$RegionMiddle$rblSolicitationPageCount" value="50" /><label for="ctl00_RegionMiddle_rblSolicitationPageCount_1">50</label></td><td><input id="ctl00_RegionMiddle_rblSolicitationPageCount_2" type="radio" name="ctl00$RegionMiddle$rblSolicitationPageCount" value="100" checked="checked" /><label for="ctl00_RegionMiddle_rblSolicitationPageCount_2">100</label></td>
+	</tr>
+</table>
+                                            </div>
+                                        </div>
+                                        <div class="col-xs-3">
+                                            <label><span id="ctl00_RegionMiddle_lblSolicitationOrderBy">Sort by</span></label>
+                                            <select name="ctl00$RegionMiddle$ddlSolicitationOrderBy" id="ctl00_RegionMiddle_ddlSolicitationOrderBy" title="Sort by" class="form-control">
+	<option value="SolicitationBroadcastDateASC">Broadcast Date Ascending</option>
+	<option value="SolicitationBroadcastDateDESC">Broadcast Date Descending</option>
+	<option value="SolicitationDueDateASC">Due Date Ascending</option>
+	<option selected="selected" value="SolicitationDueDateDESC">Due Date Descending</option>
+	<option value="SolicitationNumberASC">Number Ascending</option>
+	<option value="SolicitationNumberDESC">Number Descending</option>
+	<option value="CodeDescriptionTextASC">Status Ascending</option>
+	<option value="CodeDescriptionTextDESC">Status Descending</option>
+	<option value="SolicitationTitleASC">Title Ascending</option>
+	<option value="SolicitationTitleDESC">Title Descending</option>
+
+</select>
+                                        </div>
+                                        <div class="col-xs-3">
+                                            <br />
+                                            <input id="ctl00_RegionMiddle_cbPiggyback" type="checkbox" name="ctl00$RegionMiddle$cbPiggyback" /><label for="ctl00_RegionMiddle_cbPiggyback"> <i>Piggyback Solicitation</i></label>
+                                        </div>
+                                    </div>
+                                    <br />
+                                </div>
+                            </div>
+                            <div class="center row">
+                                <div class="col-xs-12">
+                                    
+                                    <input type="submit" name="ctl00$RegionMiddle$btnSearch" value="Search Bids" id="ctl00_RegionMiddle_btnSearch" class="btn btn-sm btn-default m-t-n-xs" />
+                                    <input type="submit" name="ctl00$RegionMiddle$btnConvertSolicitationsToExcel" value="Convert to Excel" id="ctl00_RegionMiddle_btnConvertSolicitationsToExcel" class="btn btn-sm btn-default m-t-n-xs" />
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-xs-12">
+                                    <label><span id="ctl00_RegionMiddle_lblSolicitations">Total: 10</span> (All times are listed as the listing agency's local time zone)</label><br />
+                                    <div>
+	<table class="table table-hover table-striped" cellspacing="0" id="ctl00_RegionMiddle_grvSolicitations" style="border-collapse:collapse;">
+		<tr>
+			<th scope="col" style="width:175px;">Agency</th><th scope="col" style="width:125px;">Number</th><th scope="col">Title</th><th scope="col" style="width:30px;">Online Quote/Bid</th><th scope="col" style="width:100px;">Status</th><th scope="col" style="width:80px;">Broadcast Date</th><th scope="col" style="width:30px;">Mandatory Pre-Bid</th><th scope="col" style="width:80px;">Question End Date</th><th scope="col" style="width:80px;">Due Date</th><th scope="col" style="width:25px;"><span class='hidden'>View</span></th>
+		</tr><tr>
+			<td>Osceola County School Board</td><td>SDOC-27-018-B-DM</td><td>Network Infrastructure Equipment</td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl02_cbRFQuote" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl02$cbRFQuote" checked="checked" onclick="return false;" />
+                                                </td><td><span class='badge badge-success'>Active</span></td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl02_lblItemSolicitationBroadcastDate">10/13/2026 4:00 PM</span>
+                                                </td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl02_cbMandatory" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl02$cbMandatory" onclick="return false;" />
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl02_lblItemSolicitationQuestionEndDate">10/30/2026 12:00 PM</span>
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl02_lblItemSolicitationDueDate">12/10/2026 2:00 PM</span>
+                                                </td><td>
+                                                    <a id="ctl00_RegionMiddle_grvSolicitations_ctl02_btnView" title="View" class="fa fa-search-plus fa-lg" oncontextmenu="return false;" href="javascript:__doPostBack(&#39;ctl00$RegionMiddle$grvSolicitations$ctl02$btnView&#39;,&#39;&#39;)"></a>
+                                                </td>
+		</tr><tr>
+			<td>Osceola County School Board</td><td>SDOC-27-037-B-LK</td><td>American Sign Language Interpretation Services</td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl03_cbRFQuote" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl03$cbRFQuote" checked="checked" onclick="return false;" />
+                                                </td><td><span class='badge badge-success'>Active</span></td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl03_lblItemSolicitationBroadcastDate">10/27/2026 12:00 PM</span>
+                                                </td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl03_cbMandatory" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl03$cbMandatory" onclick="return false;" />
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl03_lblItemSolicitationQuestionEndDate">11/16/2026 10:00 AM</span>
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl03_lblItemSolicitationDueDate">12/2/2026 2:00 PM</span>
+                                                </td><td>
+                                                    <a id="ctl00_RegionMiddle_grvSolicitations_ctl03_btnView" title="View" class="fa fa-search-plus fa-lg" oncontextmenu="return false;" href="javascript:__doPostBack(&#39;ctl00$RegionMiddle$grvSolicitations$ctl03$btnView&#39;,&#39;&#39;)"></a>
+                                                </td>
+		</tr><tr>
+			<td>Osceola County Board of County Commissioners</td><td>RFP-27-16104-MB</td><td>Pressure Washing and Window Cleaning Services</td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl04_cbRFQuote" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl04$cbRFQuote" onclick="return false;" />
+                                                </td><td><span class='badge badge-success'>Active</span></td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl04_lblItemSolicitationBroadcastDate">9/27/2026 8:00 AM</span>
+                                                </td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl04_cbMandatory" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl04$cbMandatory" onclick="return false;" />
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl04_lblItemSolicitationQuestionEndDate">10/15/2026 12:00 PM</span>
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl04_lblItemSolicitationDueDate">11/17/2026 2:00 PM</span>
+                                                </td><td>
+                                                    <a id="ctl00_RegionMiddle_grvSolicitations_ctl04_btnView" title="View" class="fa fa-search-plus fa-lg" oncontextmenu="return false;" href="javascript:__doPostBack(&#39;ctl00$RegionMiddle$grvSolicitations$ctl04$btnView&#39;,&#39;&#39;)"></a>
+                                                </td>
+		</tr><tr>
+			<td>Osceola County Board of County Commissioners</td><td>PS-27-15931-PC</td><td>Professional Engineering Services for Watershed Modeling and Basin Studies - Mill Slough, Polynesian Isle, and the Manor Drainage / Basin Study Areas in Osceola County – Funded by FHWA Grant No. PROT-26-0008-FL</td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl05_cbRFQuote" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl05$cbRFQuote" onclick="return false;" />
+                                                </td><td><span class='badge badge-success'>Active</span></td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl05_lblItemSolicitationBroadcastDate">10/18/2026 8:00 AM</span>
+                                                </td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl05_cbMandatory" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl05$cbMandatory" onclick="return false;" />
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl05_lblItemSolicitationQuestionEndDate">11/4/2026 2:00 PM</span>
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl05_lblItemSolicitationDueDate">11/17/2026 2:00 PM</span>
+                                                </td><td>
+                                                    <a id="ctl00_RegionMiddle_grvSolicitations_ctl05_btnView" title="View" class="fa fa-search-plus fa-lg" oncontextmenu="return false;" href="javascript:__doPostBack(&#39;ctl00$RegionMiddle$grvSolicitations$ctl05$btnView&#39;,&#39;&#39;)"></a>
+                                                </td>
+		</tr><tr>
+			<td>Osceola County School Board</td><td>SDOC-27-030-P-DM </td><td>Internet, Wide Area Network (WAN) and Special Construction Installation Services</td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl06_cbRFQuote" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl06$cbRFQuote" checked="checked" onclick="return false;" />
+                                                </td><td><span class='badge badge-success'>Active</span></td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl06_lblItemSolicitationBroadcastDate">9/15/2026 4:00 PM</span>
+                                                </td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl06_cbMandatory" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl06$cbMandatory" onclick="return false;" />
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl06_lblItemSolicitationQuestionEndDate">10/8/2026 12:00 PM</span>
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl06_lblItemSolicitationDueDate">11/12/2026 2:00 PM</span>
+                                                </td><td>
+                                                    <a id="ctl00_RegionMiddle_grvSolicitations_ctl06_btnView" title="View" class="fa fa-search-plus fa-lg" oncontextmenu="return false;" href="javascript:__doPostBack(&#39;ctl00$RegionMiddle$grvSolicitations$ctl06$btnView&#39;,&#39;&#39;)"></a>
+                                                </td>
+		</tr><tr>
+			<td>Osceola County Board of County Commissioners</td><td>ITB-27-15811-AS</td><td>Sale of Real Property 700 Union Street, Kissimmee, FL</td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl07_cbRFQuote" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl07$cbRFQuote" onclick="return false;" />
+                                                </td><td><span class='badge badge-success'>Active</span></td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl07_lblItemSolicitationBroadcastDate">10/12/2026 4:00 PM</span>
+                                                </td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl07_cbMandatory" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl07$cbMandatory" onclick="return false;" />
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl07_lblItemSolicitationQuestionEndDate">10/23/2026 12:00 PM</span>
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl07_lblItemSolicitationDueDate">11/10/2026 2:00 PM</span>
+                                                </td><td>
+                                                    <a id="ctl00_RegionMiddle_grvSolicitations_ctl07_btnView" title="View" class="fa fa-search-plus fa-lg" oncontextmenu="return false;" href="javascript:__doPostBack(&#39;ctl00$RegionMiddle$grvSolicitations$ctl07$btnView&#39;,&#39;&#39;)"></a>
+                                                </td>
+		</tr><tr>
+			<td>Osceola County Board of County Commissioners</td><td>RFP-26-16091-JG</td><td>Special Assessments Mowing and Landscaping Services on a Task Authorization Basis</td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl08_cbRFQuote" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl08$cbRFQuote" onclick="return false;" />
+                                                </td><td><span class='badge badge-success'>Active</span></td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl08_lblItemSolicitationBroadcastDate">9/20/2026 8:00 AM</span>
+                                                </td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl08_cbMandatory" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl08$cbMandatory" onclick="return false;" />
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl08_lblItemSolicitationQuestionEndDate">9/29/2026 12:00 PM</span>
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl08_lblItemSolicitationDueDate">11/3/2026 2:00 PM</span>
+                                                </td><td>
+                                                    <a id="ctl00_RegionMiddle_grvSolicitations_ctl08_btnView" title="View" class="fa fa-search-plus fa-lg" oncontextmenu="return false;" href="javascript:__doPostBack(&#39;ctl00$RegionMiddle$grvSolicitations$ctl08$btnView&#39;,&#39;&#39;)"></a>
+                                                </td>
+		</tr><tr>
+			<td>Osceola County Board of County Commissioners</td><td>RFQ-27-16219-NO</td><td>Mobile Scalper Rental</td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl09_cbRFQuote" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl09$cbRFQuote" checked="checked" onclick="return false;" />
+                                                </td><td><span class='badge badge-success'>Active</span></td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl09_lblItemSolicitationBroadcastDate">10/20/2026 8:00 AM</span>
+                                                </td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl09_cbMandatory" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl09$cbMandatory" onclick="return false;" />
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl09_lblItemSolicitationQuestionEndDate">10/27/2026 2:00 PM</span>
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl09_lblItemSolicitationDueDate">11/3/2026 2:00 PM</span>
+                                                </td><td>
+                                                    <a id="ctl00_RegionMiddle_grvSolicitations_ctl09_btnView" title="View" class="fa fa-search-plus fa-lg" oncontextmenu="return false;" href="javascript:__doPostBack(&#39;ctl00$RegionMiddle$grvSolicitations$ctl09$btnView&#39;,&#39;&#39;)"></a>
+                                                </td>
+		</tr><tr>
+			<td>Osceola County School Board</td><td>SDOC-27-008-B-LV</td><td>Security Cameras and Accessories</td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl10_cbRFQuote" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl10$cbRFQuote" checked="checked" onclick="return false;" />
+                                                </td><td><span class='badge badge-success'>Active</span></td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl10_lblItemSolicitationBroadcastDate">9/28/2026 8:00 AM</span>
+                                                </td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl10_cbMandatory" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl10$cbMandatory" onclick="return false;" />
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl10_lblItemSolicitationQuestionEndDate">10/14/2026 12:00 PM</span>
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl10_lblItemSolicitationDueDate">10/28/2026 2:00 PM</span>
+                                                </td><td>
+                                                    <a id="ctl00_RegionMiddle_grvSolicitations_ctl10_btnView" title="View" class="fa fa-search-plus fa-lg" oncontextmenu="return false;" href="javascript:__doPostBack(&#39;ctl00$RegionMiddle$grvSolicitations$ctl10$btnView&#39;,&#39;&#39;)"></a>
+                                                </td>
+		</tr><tr>
+			<td>Osceola County School Board</td><td>SDOC-27-009-B-LV</td><td>Door Hardware and Locks</td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl11_cbRFQuote" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl11$cbRFQuote" checked="checked" onclick="return false;" />
+                                                </td><td><span class='badge badge-success'>Active</span></td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl11_lblItemSolicitationBroadcastDate">9/28/2026 8:00 AM</span>
+                                                </td><td align="center">
+                                                    <input id="ctl00_RegionMiddle_grvSolicitations_ctl11_cbMandatory" type="checkbox" name="ctl00$RegionMiddle$grvSolicitations$ctl11$cbMandatory" onclick="return false;" />
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl11_lblItemSolicitationQuestionEndDate">10/14/2026 12:00 PM</span>
+                                                </td><td>
+                                                    <span id="ctl00_RegionMiddle_grvSolicitations_ctl11_lblItemSolicitationDueDate">10/28/2026 2:00 PM</span>
+                                                </td><td>
+                                                    <a id="ctl00_RegionMiddle_grvSolicitations_ctl11_btnView" title="View" class="fa fa-search-plus fa-lg" oncontextmenu="return false;" href="javascript:__doPostBack(&#39;ctl00$RegionMiddle$grvSolicitations$ctl11$btnView&#39;,&#39;&#39;)"></a>
+                                                </td>
+		</tr>
+	</table>
+</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+        </div>
+        <nav class="navbar navbar-default navbar-fixed-bottom" role="navigation">
+            <div class="container">
+                <div class="collapse navbar-collapse">
+                    <ul class="nav navbar-nav">
+                        <li><a href="termsandconditions" title="Terms and Conditions">Terms and Conditions</a></li>
+                        <li><a href="privacypolicy" title="Privacy Policy">Privacy Policy</a></li>
+                                                
+                        <li><a href="http://www.mylinksystems.com/" title="LinkSystems, LLC" target="_blank">LinkSystems, LLC</a></li>
+                    </ul>
+                    <ul class="nav navbar-nav navbar-right">
+                        <li><a href="otheragencysites" title="Other VendorLink Sites">Other VendorLink Sites - <span id="ctl00_lblMessage" class="red">New agency sites!</span></a></li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    
+
+
+</form> 
+</body>
+</html>

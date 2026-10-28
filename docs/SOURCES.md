@@ -79,6 +79,19 @@ Common rules for all sources:
 | Not yet used          | Descriptions and documents, which are on each project's public page                                                                                                                                                                                                                          |
 | Before commercial use | (1) Read and record Bonfire's terms of use; (2) confirm the remaining Florida portals (Marion County, Lee County Schools and others) by hand; (3) FAU (fau.bonfirehub.com) answered HTTP 429 to server requests on Oct 27, 2026, so it is left out until Bonfire confirms an acceptable rate |
 
+## vendorlink
+
+|                       |                                                                                                                                                                                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Owner                 | VendorLink (Diversified Data Systems), on behalf of each agency that posts there                                                                                                                                                                                   |
+| Access                | Public bid search at `www.myvendorlink.com/external/bids` (about 115 agencies, nearly all in Florida) and agency-run copies at `vendorlink.osceola.org` (Osceola County and its school board) and `vendorlink.ocps.net` (Orange County Public Schools). No sign-in |
+| Method                | The public ASP.NET search form, posted back exactly as a browser does (verified without cookies on Oct 28, 2026): GET the form, POST it with agency "all", status Active, 100 rows per page and piggyback contracts off, then follow the grid's own pager          |
+| Observed              | Oct 28, 2026: 85 active solicitations on the shared site across about 40 agencies (Brevard, OUC, Hillsborough, Polk, Manatee, Sarasota, Seminole, St. Johns school districts, Ocala, Kissimmee, St. Cloud, DeLand, Oviedo, KUA and others); 10 on the Osceola site |
+| Fields used           | Agency (and its id from the agency list), number, title, status, broadcast date, mandatory pre-bid flag, question end date, due date (Eastern time)                                                                                                                |
+| Not yet used          | The detail page (scope of services, contacts, bonds, documents). It is session-bound (`/external/biddetails` with no id), so records link to the public list filtered to the agency                                                                                |
+| State                 | Agencies are placed in Florida unless the name names another state (e.g. "City of Madison, Georgia", "Cape Hatteras Electric Cooperative" in NC)                                                                                                                   |
+| Before commercial use | (1) Read and record VendorLink's terms of use; (2) run daily and paced (a handful of requests per site)                                                                                                                                                            |
+
 ## openfema
 
 |        |                                                                                                          |

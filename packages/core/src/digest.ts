@@ -100,13 +100,14 @@ const SOURCE_LABEL: Record<Opportunity["source"], string> = {
   openfema: "FEMA",
   opengov: "Local (OpenGov)",
   bonfire: "Local (Bonfire)",
+  vendorlink: "Local (VendorLink)",
 };
 
 const STATE_NAME: Record<string, string> = { FL: "Florida", TX: "Texas" };
 
 /** Local portals read buyers in several states, so their label names the state ("Florida local"). */
 const sourceLabel = (o: Opportunity) =>
-  o.source === "opengov" || o.source === "bonfire"
+  o.source === "opengov" || o.source === "bonfire" || o.source === "vendorlink"
     ? `${(o.state && STATE_NAME[o.state]) ?? o.state ?? "Local"} local`
     : SOURCE_LABEL[o.source];
 

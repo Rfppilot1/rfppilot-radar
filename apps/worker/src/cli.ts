@@ -6,6 +6,7 @@ import {
   FlMfmpConnector,
   OpenGovConnector,
   BonfireConnector,
+  VendorLinkConnector,
   HttpClient,
   HttpFlTransport,
   SamGovConnector,
@@ -49,7 +50,7 @@ import { recentSignals } from "./signals.js";
  * Radar operations CLI. Production runs `radar daily` on a schedule (cron, a container job, or a queue worker).
  *
  *   radar profile load <file.json>                 create/replace a firm profile
- *   radar ingest [--sources tx-esbd,fl-mfmp,opengov,bonfire,sam-gov] [--max N]
+ *   radar ingest [--sources tx-esbd,fl-mfmp,opengov,bonfire,vendorlink,sam-gov] [--max N]
  *   radar import --source <id> --file <raw.json>   load raw source records captured elsewhere
  *   radar score                                     rescore every profile
  *   radar digest --tenant T --profile P [--since ISO] [--format text|markdown|json] [--out file]
@@ -107,6 +108,7 @@ function connectors(
         }),
       );
     else if (s === "bonfire") out.push(new BonfireConnector({ http }));
+    else if (s === "vendorlink") out.push(new VendorLinkConnector({ http }));
     else if (s === "sam-gov") {
       // Federal coverage is optional: without a key the run continues with the state sources.
       if (!process.env.SAM_API_KEY) {
@@ -280,7 +282,9 @@ async function main() {
   const [cmd, sub, arg] = positionals;
   const repo = await openRepo();
   try {
-    const sources = (values.sources ?? "tx-esbd,fl-mfmp,opengov,bonfire,sam-gov").split(",") as SourceId[];
+    const sources = (values.sources ?? "tx-esbd,fl-mfmp,opengov,bonfire,vendorlink,sam-gov").split(
+      ",",
+    ) as SourceId[];
     const max = values.max ? Number(values.max) : undefined;
     if (cmd === "profile" && sub === "load" && arg) {
       const p = FirmProfile.parse(JSON.parse(await readFile(arg, "utf8")));
