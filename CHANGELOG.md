@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased: VendorLink (Florida local agencies)
+
+- New public source **VendorLink**: the shared site (about 115 agencies, nearly all in Florida: Brevard County, OUC, the Hillsborough, Polk, Manatee, Sarasota, Seminole and St. Johns school districts, Ocala, Kissimmee, St. Cloud and others) plus the Osceola County and Orange County Public Schools sites. Reads the public search form as a browser does; no sign-in.
+- Question deadlines and mandatory pre-bid flags become key dates; sole-source notices and standing vendor registrations are routed to the intel lane, not the bid list.
+
 ## Unreleased: Florida local government portals
 
 - Two new public sources: **OpenGov Procurement** (every Florida government on the platform, discovered automatically: 98 portals and 333 open projects on Oct 27, 2026, including Orange, Volusia, Collier, Pinellas and Sarasota counties, Tampa, Orlando, St. Petersburg, airports, utilities and school districts) and **Bonfire** (Broward, Hillsborough and Pasco counties, Tallahassee, UCF; FAU is left out because it rate-limits server requests). Both read the same public JSON the portal pages use; no sign-in.
