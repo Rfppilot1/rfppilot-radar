@@ -266,7 +266,9 @@ async function deliverProfile(repo: Repository, p: FirmProfile, o: DeliveryOptio
     first ??= d;
 
     const subject = `${o.testTo ? "[TEST] " : ""}${digestSubject(p.name, d.newMatches.length, d.closingSoon.length, o.now)}`;
-    const mode = o.testTo ? "test" : o.replay ? `replay-${o.now.slice(0, 10)}` : "live";
+    // Live sends dedupe on the recipient's window, so a resend after a crash is dropped. Test and replay sends
+    // are previews someone may repeat after a template change the same day, so each run gets its own key.
+    const mode = o.testTo ? `test-${o.now}` : o.replay ? `replay-${o.now}` : "live";
     for (const r of recipients) {
       // One email per recipient: addresses stay private, and Yes/No links are signed for that person.
       const opts = o.feedback
