@@ -6,3 +6,5 @@ coverage/
 .env.*
 !.env.example
 data/
+.next
+next-env.d.ts

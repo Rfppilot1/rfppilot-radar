@@ -7,5 +7,13 @@
     "declarationMap": false,
     "customConditions": ["radar-src"]
   },
-  "include": ["packages/*/src", "packages/*/test", "apps/*/src", "apps/*/test", "vitest.config.ts"]
+  "include": [
+    "packages/*/src",
+    "packages/*/test",
+    "apps/*/src",
+    "apps/*/test",
+    "vitest.config.ts",
+    "apps/api/scripts"
+  ],
+  "exclude": ["apps/web"]
 }
