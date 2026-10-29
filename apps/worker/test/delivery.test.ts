@@ -39,6 +39,26 @@ describe("email delivery", () => {
     expect(() => new ResendMailer("k", "nobody")).toThrow(/RADAR_EMAIL_FROM/);
   });
 
+  it("retries transient Resend errors with the same key and counts a reused-key 409 as already sent", async () => {
+    const keys: (string | undefined)[] = [];
+    const replies = [
+      new Response("busy", { status: 503 }),
+      new Response(JSON.stringify({ id: "em_9" })),
+      new Response(JSON.stringify({ name: "invalid_idempotent_request" }), { status: 409 }),
+      new Response("bad", { status: 422 }),
+    ];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      keys.push((init.headers as Record<string, string>)["idempotency-key"]);
+      return replies.shift()!;
+    }) as unknown as typeof fetch;
+    const m = new ResendMailer("re_test", "radar@rfppilot.com", fetchImpl, async () => {});
+    const mail = { to: ["a@b.co"], subject: "s", html: "h", text: "t", idempotencyKey: "k1" };
+    expect(await m.send(mail)).toEqual({ id: "em_9" });
+    expect(keys).toEqual(["k1", "k1"]);
+    expect(await m.send(mail)).toEqual({ id: null, duplicate: true });
+    await expect(m.send(mail)).rejects.toThrow(/422/);
+  });
+
   it("writes a short subject line", () => {
     expect(digestSubject("ISF", 3, 1, NOW)).toBe("Radar Oct 15: 3 new, 1 closing soon for ISF");
   });

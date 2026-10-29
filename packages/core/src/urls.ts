@@ -44,6 +44,8 @@ function privateIpv6(ip: string): boolean {
   if (ip === "::" || ip === "::1") return true;
   const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(ip);
   if (mapped) return privateIpv4(mapped[1]!);
-  if (/^::ffff:/.test(ip)) return true;
+  // Any other address starting "::" embeds an IPv4 address (IPv4-compatible, e.g. ::7f00:1); 64:ff9b:: is
+  // NAT64, which also reaches an embedded IPv4 address. Neither belongs in a public document link.
+  if (ip.startsWith("::") || ip.startsWith("64:ff9b:")) return true;
   return /^(fc|fd|fe8|fe9|fea|feb|ff)/.test(ip);
 }

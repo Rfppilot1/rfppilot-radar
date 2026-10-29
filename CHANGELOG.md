@@ -9,6 +9,9 @@
 - **Database writes are atomic.** An opportunity and its version row, and a close and its version rows, are written in one transaction, so a crash cannot lose a change alert. Each migration and its record are applied in one transaction.
 - **Safer document links.** Only public http(s) document links are stored for Texas and SAM.gov and handed to RFP Pilot; links to private, loopback, link-local or metadata addresses, intranet names or other schemes are dropped.
 - **Bounded source requests.** Response bodies are capped at 25 MB, and each source has a time limit (`RADAR_SOURCE_DEADLINE_MIN`, default 45): a source past it stops, keeps what it fetched and closes nothing.
+- Resend sends are retried on network errors, 429 and 5xx with the same idempotency key; a 409 for a key already used counts as sent. A dropped database connection is logged instead of crashing the worker.
+- Replay runs (`RADAR_DIGEST_REPLAY_UNTIL`) are previews and no longer move the "last delivered" mark.
+- Recipients are de-duplicated regardless of capitalization.
 - The daily run moved from the CLI into `apps/worker/src/daily.ts`, with tests.
 
 ## Unreleased: VendorLink (Florida local agencies)

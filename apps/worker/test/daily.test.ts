@@ -196,8 +196,9 @@ describe("daily run: email is sent once per recipient", () => {
     expect(r1[0]!.error).not.toContain("b@isf.example");
     expect(day1.sent.map((m) => m.to)).toEqual([["a@isf.example"]]);
     expect(await repo.lastDeliveryAt("isf", "isf-main", "a@isf.example")).toBe(DAY1);
-    expect(await repo.lastDeliveryAt("isf", "isf-main", "b@isf.example")).toBeNull();
-    expect(await repo.lastDigestAt("isf", "isf-main")).toBeNull();
+    // b's window stays pinned at its start; the profile mark moves because a got the email.
+    expect(await repo.lastDeliveryAt("isf", "isf-main", "b@isf.example")).toBe("1970-01-01T00:00:00.000Z");
+    expect(await repo.lastDigestAt("isf", "isf-main")).toBe(DAY1);
 
     // Day 2: b gets yesterday's new match; a does not see it again.
     const day2 = new FakeMailer();
@@ -209,6 +210,25 @@ describe("daily run: email is sent once per recipient", () => {
     expect(toA.subject).toMatch(/0 new/);
     expect(toA.idempotencyKey).not.toBe(toB.idempotencyKey);
     expect(await repo.lastDigestAt("isf", "isf-main")).toBe(DAY2);
+  });
+
+  it("does not move the profile mark when every send fails", async () => {
+    const repo = await seeded();
+    const p = profile("isf", "isf-main", ["a@isf.example"]);
+    await repo.upsertProfile(p, DAY1);
+    await rescoreProfile(repo, p, SCORED);
+    await deliverDigests(repo, opts({ mailer: new FakeMailer(new Set(["a@isf.example"])) }));
+    expect(await repo.lastDigestAt("isf", "isf-main")).toBeNull();
+  });
+
+  it("sends one email per address whatever its capitalization", async () => {
+    const repo = await seeded();
+    const p = profile("isf", "isf-main", ["A@isf.example", "a@isf.example"]);
+    await repo.upsertProfile(p, DAY1);
+    await rescoreProfile(repo, p, SCORED);
+    const mailer = new FakeMailer();
+    await deliverDigests(repo, opts({ mailer }));
+    expect(mailer.sent).toHaveLength(1);
   });
 
   it("reuses the idempotency key for a resend of the same window, and changes it after a delivery", () => {
@@ -293,7 +313,7 @@ describe("daily run: health check", () => {
       "tx-esbd: failed (HTTP 503)",
       "opengov: returned 0 records",
       "vendorlink: too many open records were missing from the run, so none were closed",
-      "sam-gov: stopped at its time limit; what it fetched was kept",
+      "sam-gov: stopped at its time limit",
       "fl-mfmp: 30 of 40 records could not be read",
       "bonfire: no complete run since 2026-10-10",
       "isf/isf-main: digest failed (email failed)",

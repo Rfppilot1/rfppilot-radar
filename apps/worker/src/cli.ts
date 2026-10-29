@@ -66,6 +66,8 @@ const USER_AGENT = process.env.RADAR_USER_AGENT ?? "RFPPilotRadar/0.1 (+https://
 async function openRepo(): Promise<Repository> {
   if (process.env.DATABASE_URL) {
     const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 4 });
+    // An idle pooled connection that drops emits "error"; log it instead of crashing the run.
+    pool.on("error", (err) => log({ event: "db_connection_error", error: err.message }));
     await migrate(pool);
     return new PostgresRepository(pool);
   }

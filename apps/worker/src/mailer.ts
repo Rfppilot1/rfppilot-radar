@@ -17,7 +17,7 @@ export interface Mail {
 }
 
 export interface Mailer {
-  send(mail: Mail): Promise<{ id: string | null }>;
+  send(mail: Mail): Promise<{ id: string | null; duplicate?: boolean }>;
 }
 
 export class ResendMailer implements Mailer {
@@ -25,15 +25,47 @@ export class ResendMailer implements Mailer {
     private readonly apiKey: string,
     private readonly from: string,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
   ) {
     if (!apiKey) throw new Error("RESEND_API_KEY is required");
     if (!/@/.test(from))
       throw new Error("RADAR_EMAIL_FROM must be an email address, e.g. Radar <radar@rfppilot.com>");
   }
 
-  async send(mail: Mail): Promise<{ id: string | null }> {
+  /**
+   * Sends one email. Transient failures (network, 429, 5xx) are retried with the same idempotency key, so a
+   * retry can never deliver twice. A 409 `invalid_idempotent_request` means an email with this key was already
+   * accepted (an earlier attempt whose delivery was not recorded): it is reported as sent, `duplicate: true`.
+   */
+  async send(mail: Mail): Promise<{ id: string | null; duplicate?: boolean }> {
     if (mail.to.length === 0) return { id: null };
-    const res = await this.fetchImpl("https://api.resend.com/emails", {
+    const attempts = mail.idempotencyKey ? 3 : 1;
+    for (let attempt = 1; ; attempt++) {
+      let res: Response;
+      try {
+        res = await this.post(mail);
+      } catch (err) {
+        if (attempt >= attempts) throw err;
+        await this.sleep(attempt * 2000);
+        continue;
+      }
+      if (res.ok) {
+        const body = (await res.json()) as { id?: string };
+        return { id: body.id ?? null };
+      }
+      const text = await res.text();
+      if (res.status === 409 && mail.idempotencyKey && /invalid_idempotent_request/.test(text))
+        return { id: null, duplicate: true };
+      if ((res.status === 429 || res.status >= 500) && attempt < attempts) {
+        await this.sleep(attempt * 2000);
+        continue;
+      }
+      throw new Error(`Resend API ${res.status}: ${text.slice(0, 200)}`);
+    }
+  }
+
+  private post(mail: Mail): Promise<Response> {
+    return this.fetchImpl("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         authorization: `Bearer ${this.apiKey}`,
@@ -50,9 +82,6 @@ export class ResendMailer implements Mailer {
         ...(mail.unsubscribe ? { headers: { "List-Unsubscribe": `<${mail.unsubscribe}>` } } : {}),
       }),
     });
-    if (!res.ok) throw new Error(`Resend API ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const body = (await res.json()) as { id?: string };
-    return { id: body.id ?? null };
   }
 }
 

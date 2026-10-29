@@ -56,8 +56,9 @@ export async function ingestSources(
   const out: SourceResult[] = [];
   for (const { connector: c, controller } of jobs) {
     const started = new Date().toISOString();
-    // A source that runs past its deadline is stopped; what it fetched is kept and the run counts as
-    // incomplete, so nothing is closed by absence.
+    // A source that runs past its deadline is stopped and the run counts as incomplete, so nothing is closed
+    // by absence. Records it had already returned are kept; a source whose list request was cut off returns
+    // nothing and is reported as failed.
     const timer =
       controller && o.deadlineMs
         ? setTimeout(() => controller.abort(new Error("source time limit")), o.deadlineMs)
@@ -213,7 +214,11 @@ export async function deliverDigests(repo: Repository, o: DeliveryOptions): Prom
 async function deliverProfile(repo: Repository, p: FirmProfile, o: DeliveryOptions): Promise<string[]> {
   const last = await repo.lastDigestAt(p.tenantId, p.id);
   if (o.replay) o.log({ event: "digest_replay", profile: p.id });
-  const to = o.testTo ? [o.testTo] : recipientsFor(o.recipientOverrides, p.tenantId, p.id, p.delivery.email);
+  const listed = o.testTo
+    ? [o.testTo]
+    : recipientsFor(o.recipientOverrides, p.tenantId, p.id, p.delivery.email);
+  // One email per address, whatever its capitalization.
+  const to = [...new Map(listed.map((r) => [r.trim().toLowerCase(), r.trim()] as const)).values()];
   const sending = o.mailer !== null && to.length > 0;
   const record = !o.testTo && !o.replay;
 
@@ -290,6 +295,7 @@ async function deliverProfile(repo: Repository, p: FirmProfile, o: DeliveryOptio
           unsubscribe: o.unsubscribe,
           idempotencyKey: deliveryKey(p, r, since, mode),
         });
+        if (sent.duplicate) o.log({ event: "email_already_sent", profile: p.id, recipient: maskEmail(r) });
         if (record)
           await repo.recordDelivery({
             tenantId: p.tenantId,
@@ -299,7 +305,18 @@ async function deliverProfile(repo: Repository, p: FirmProfile, o: DeliveryOptio
             messageId: sent.id,
           });
       } catch (err) {
-        // Not recorded, so this recipient's next digest still includes today's items.
+        // Pin this recipient's window where it started, so their next digest still includes today's items
+        // even after the profile mark moves on for everyone else. (A row older than their latest is a no-op.)
+        if (record)
+          await repo
+            .recordDelivery({
+              tenantId: p.tenantId,
+              profileId: p.id,
+              recipient: r,
+              generatedAt: since,
+              messageId: null,
+            })
+            .catch((e) => o.log({ event: "record_delivery_failed", profile: p.id, error: errText(e) }));
         failures.push(`${maskEmail(r)}: ${errText(err).slice(0, 160)}`);
         o.log({ event: "email_failed", profile: p.id, recipient: maskEmail(r), error: errText(err) });
       }
@@ -316,9 +333,10 @@ async function deliverProfile(repo: Repository, p: FirmProfile, o: DeliveryOptio
       })
       .catch((err: Error) => o.log({ event: "digest_files_failed", profile: p.id, error: err.message }));
   }
-  // The profile-level mark moves only when everyone got today's email (or no email is configured): it is the
-  // starting point for recipients who have no delivery rows yet.
-  if (record && failures.length === 0) await repo.recordDigest(p.tenantId, p.id, o.now);
+  // The profile-level mark (the starting point for recipients with no delivery rows yet, and the API's
+  // default window) moves when anyone got today's email, or when no email is configured. A recipient whose
+  // send failed keeps their own pinned window, so one bad address cannot hold back the whole profile.
+  if (record && (!sending || failures.length < to.length)) await repo.recordDigest(p.tenantId, p.id, o.now);
   o.log({
     event: "digest",
     profile: p.id,
@@ -361,9 +379,10 @@ export async function healthProblems(
     else if (s.fetched === 0) problems.push(`${s.source}: returned 0 records`);
     if (s.closeRefused)
       problems.push(`${s.source}: too many open records were missing from the run, so none were closed`);
-    if (s.deadlineHit) problems.push(`${s.source}: stopped at its time limit; what it fetched was kept`);
+    if (s.deadlineHit) problems.push(`${s.source}: stopped at its time limit`);
+    // Skipped after a deadline, unread detail pages are not a parsing problem.
     const seen = s.fetched + s.rejected;
-    if (s.rejected >= 5 && s.rejected > seen * 0.25)
+    if (!s.deadlineHit && s.rejected >= 5 && s.rejected > seen * 0.25)
       problems.push(`${s.source}: ${s.rejected} of ${seen} records could not be read`);
     const lastComplete = await repo.lastCompleteRunAt(s.source).catch(() => null);
     if (lastComplete && Date.parse(now) - Date.parse(lastComplete) > STALE_AFTER_MS)

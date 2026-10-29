@@ -26,7 +26,13 @@ export interface Queryable {
 
 /** A pool that can lend a single connection (pg.Pool); needed to hold a session-level advisory lock. */
 interface PoolLike extends Queryable {
-  connect(): Promise<Pick<Queryable, "query"> & { release(): void }>;
+  connect(): Promise<
+    Pick<Queryable, "query"> & {
+      release(err?: Error | boolean): void;
+      on?(event: "error", fn: (err: Error) => void): unknown;
+      off?(event: "error", fn: (err: Error) => void): unknown;
+    }
+  >;
 }
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../migrations/", import.meta.url));
@@ -55,7 +61,8 @@ export async function migrate(pool: Queryable | PoolLike, dir = MIGRATIONS_DIR):
     for (const file of (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort()) {
       if (done.has(file)) continue;
       const sql = await readFile(`${dir}${file}`, "utf8");
-      // A migration and its record land together or not at all, so a failed one is retried whole.
+      // A migration and its record land together or not at all, so a failed one is retried whole. (So a
+      // migration cannot use CREATE INDEX CONCURRENTLY, which refuses to run inside a transaction.)
       await db.query("BEGIN");
       try {
         if (db.exec) await db.exec(sql);
@@ -100,7 +107,22 @@ export class PostgresRepository implements Repository {
     const pool = this.db as Partial<PoolLike>;
     if (typeof pool.connect === "function") {
       const c = await pool.connect.call(this.db);
-      return { q: c, release: () => c.release() };
+      // A checked-out client has no pool error listener; without one, a dropped connection (database restart,
+      // idle timeout) would be an uncaught exception that kills the process mid-run. Record the error instead,
+      // and hand a broken client back as broken so the pool discards it. Losing the session also drops any
+      // advisory lock it held; the next query on it fails and the run reports that failure.
+      let broken: Error | null = null;
+      const onError = (err: Error) => {
+        broken = err;
+      };
+      c.on?.("error", onError);
+      return {
+        q: c,
+        release: () => {
+          c.off?.("error", onError);
+          c.release(broken ?? undefined);
+        },
+      };
     }
     return { q: this.db, release: () => {} };
   }

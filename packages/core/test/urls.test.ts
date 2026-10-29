@@ -27,6 +27,8 @@ describe("isPublicUrl", () => {
       "http://[fd00::1]/",
       "http://[fe80::1]/",
       "http://[::ffff:127.0.0.1]/",
+      "http://[::127.0.0.1]/",
+      "http://[64:ff9b::a9fe:a9fe]/",
       "http://localhost/",
       "http://api.localhost/",
       "http://intranet/",

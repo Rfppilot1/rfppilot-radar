@@ -91,7 +91,7 @@ export class HttpClient {
         if (err instanceof HttpAbortError) throw err;
         this.checkAborted(url);
         if (attempt >= maxRetries) throw err;
-        await this.sleep(backoff(attempt));
+        await this.pause(backoff(attempt));
         continue;
       } finally {
         clearTimeout(timer);
@@ -100,8 +100,24 @@ export class HttpClient {
       const transient = status === 429 || status >= 500;
       if (!transient || attempt >= maxRetries) throw new HttpError(status, url, body.slice(0, 500));
       const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : backoff(attempt);
-      await this.sleep(Math.min(MAX_RETRY_AFTER_MS, wait));
+      await this.pause(Math.min(MAX_RETRY_AFTER_MS, wait));
     }
+  }
+
+  /** Sleeps, but wakes as soon as the client's signal aborts, so a deadline is not overrun by a long wait. */
+  private async pause(ms: number): Promise<void> {
+    const signal = this.opts.signal;
+    if (!signal) return this.sleep(ms);
+    if (signal.aborted) return;
+    let onAbort = () => {};
+    await Promise.race([
+      this.sleep(ms),
+      new Promise<void>((r) => {
+        onAbort = () => r();
+        signal.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]);
+    signal.removeEventListener("abort", onAbort);
   }
 
   private checkAborted(url: string) {
@@ -114,7 +130,7 @@ export class HttpClient {
     const min = this.opts.minIntervalMs ?? 1000;
     const last = this.lastByHost.get(host) ?? 0;
     const wait = last + min - Date.now();
-    if (wait > 0) await this.sleep(wait);
+    if (wait > 0) await this.pause(wait);
     this.lastByHost.set(host, Date.now());
   }
 }

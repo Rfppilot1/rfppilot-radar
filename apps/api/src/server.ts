@@ -7,6 +7,8 @@ const auth = ApiKeyAuth.fromEnv(process.env.RADAR_API_KEYS);
 let repo;
 if (process.env.DATABASE_URL) {
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
+  // An idle pooled connection that drops emits "error"; log it instead of crashing the API.
+  pool.on("error", (err) => console.error(`database connection error: ${err.message}`));
   await migrate(pool);
   repo = new PostgresRepository(pool);
 } else if (process.env.RADAR_ALLOW_MEMORY === "1") {
