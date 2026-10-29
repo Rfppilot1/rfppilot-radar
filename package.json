@@ -10,13 +10,14 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm -r run build",
-    "typecheck": "tsc -b && tsc -p tsconfig.tests.json",
+    "build": "pnpm -r --filter '!@radar/web' run build",
+    "typecheck": "tsc -b && tsc -p tsconfig.tests.json && tsc -p apps/web --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "pnpm typecheck && pnpm format:check && pnpm test"
+    "check": "pnpm typecheck && pnpm format:check && pnpm test",
+    "build:web": "pnpm --filter @radar/web build"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

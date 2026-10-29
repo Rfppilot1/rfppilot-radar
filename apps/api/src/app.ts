@@ -132,6 +132,12 @@ export function openApiDocument() {
         },
       },
       "/v1/profiles/{profileId}/decisions": {
+        get: {
+          summary: "Current pursue / pass / watch answer per opportunity",
+          security: auth,
+          parameters: [pid],
+          responses: { 200: { description: "Decisions" } },
+        },
         post: {
           summary: "Record pursue / pass / watch",
           security: auth,
@@ -301,6 +307,17 @@ function registerTenantRoutes(app: FastifyInstance, repo: Repository, now: () =>
     const { profileId } = ProfileId.parse(req.params);
     const body = DecisionInput.parse(req.body);
     return repo.saveDecision(tenantOf(req), { ...body, profileId, decidedAt: now() });
+  });
+
+  app.get("/profiles/:profileId/decisions", async (req) => {
+    const { profileId } = ProfileId.parse(req.params);
+    const decisions = await repo.listDecisions(tenantOf(req), profileId);
+    // The stored content hash is internal bookkeeping for "changed since you passed", so it stays server-side.
+    return {
+      decisions: decisions
+        .map(({ hashAtDecision: _h, ...d }) => d)
+        .sort((a, b) => b.decidedAt.localeCompare(a.decidedAt)),
+    };
   });
 
   app.get("/profiles/:profileId/second-look", async (req) => {

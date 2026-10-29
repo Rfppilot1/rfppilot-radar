@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/* RFP Pilot brand: teal to blue to navy. Light page, white cards, one accent. */
+@theme {
+  --color-ink: #14213d;
+  --color-muted: #556175;
+  --color-line: #d3e1ec;
+  --color-page: #f4f9fd;
+  --color-card: #ffffff;
+  --color-brand: #1a75c8;
+  --color-brand-dark: #0e2f6c;
+  --color-teal: #1795c3;
+  --color-strong: #0f7a4f;
+  --color-strong-bg: #e3f4ec;
+  --color-possible: #9a6400;
+  --color-possible-bg: #fdf2dc;
+  --color-shade-1: #d7ebf8;
+  --color-shade-2: #9fcbec;
+  --color-shade-3: #5aa5db;
+  --color-shade-4: #1a75c8;
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+html,
+body {
+  background: var(--color-page);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}

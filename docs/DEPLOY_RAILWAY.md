@@ -70,3 +70,13 @@ overwritten the next morning. Change targeting in the file instead until tenants
 
 Hobby plan plus usage: roughly $5–20/month for the API, a daily cron and a small Postgres. Claude reviewer:
 up to 50 short calls per day. Resend: free tier covers a few hundred emails a month.
+
+## Web prototype (staging only)
+
+A third service, `radar-web`, runs the website in `apps/web`.
+
+1. New service from the repo, branch `staging`, Dockerfile path `apps/web/Dockerfile`, health check `/` is not
+   used (the page needs the password); leave it off or point it at the default.
+2. Variables: `RADAR_API_URL` (the staging API's URL), `RADAR_API_KEY`, `RADAR_PROFILE_ID=isf-main`,
+   `WEB_PASSWORD`. On the staging API, add the same key to `RADAR_API_KEYS` as `isf:<key>`.
+3. Generate a public domain. Share the URL and password only with people testing.

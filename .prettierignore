@@ -3,3 +3,5 @@ dist
 coverage
 pnpm-lock.yaml
 packages/connectors/test/fixtures
+.next
+apps/web/next-env.d.ts
