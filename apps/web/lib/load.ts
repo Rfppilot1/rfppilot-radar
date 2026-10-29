@@ -10,7 +10,11 @@ import { getDecisions, getMatches, getProfile, type MatchItem } from "./radar";
  * RADAR_NOW pins the clock for screenshots and demos; it is never set in production.
  */
 export async function loadRadar() {
-  const [profile, items, decisions] = await Promise.all([getProfile(), getMatches(), getDecisions()]);
+  const [profile, { items, truncated }, decisions] = await Promise.all([
+    getProfile(),
+    getMatches(),
+    getDecisions(),
+  ]);
   const now = process.env.RADAR_NOW ?? new Date().toISOString();
   const previousVisit = (await headers()).get("x-radar-previous-visit") || null;
 
@@ -43,5 +47,5 @@ export async function loadRadar() {
       return p.kind === "county" ? p.county.fips : null;
     },
   };
-  return { profile, items, now, previousVisit, place, decisionOf, ctx, counties };
+  return { profile, items, truncated, now, previousVisit, place, decisionOf, ctx, counties };
 }

@@ -45,6 +45,8 @@ const DecisionInput = z.object({
   reason: z.string().max(2000).nullable().default(null),
   decidedBy: z.string().max(200).nullable().default(null),
 });
+/** Largest page of matches one request returns; `truncated` in the response says when more exist. */
+export const MAX_MATCHES = 2000;
 const MatchesQuery = z.object({
   band: z
     .string()
@@ -53,7 +55,7 @@ const MatchesQuery = z.object({
     .pipe(z.array(z.enum(["strong", "possible", "weak", "excluded"])).optional()),
   lane: z.enum(["bid", "intel"]).optional(),
   since: z.string().datetime().optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(100),
+  limit: z.coerce.number().int().min(1).max(MAX_MATCHES).default(100),
 });
 const DigestQuery = z.object({
   since: z.string().datetime().optional(),
@@ -126,7 +128,7 @@ export function openApiDocument() {
             },
             { name: "lane", in: "query", schema: { type: "string", enum: ["bid", "intel"] } },
             { name: "since", in: "query", schema: { type: "string", format: "date-time" } },
-            { name: "limit", in: "query", schema: { type: "integer", maximum: 500 } },
+            { name: "limit", in: "query", schema: { type: "integer", maximum: MAX_MATCHES } },
           ],
           responses: { 200: { description: "Matches" } },
         },
@@ -293,11 +295,15 @@ function registerTenantRoutes(app: FastifyInstance, repo: Repository, now: () =>
       lane: q.lane,
       firstGoodSince: q.since,
       activeAt: now(),
-      limit: q.limit,
+      // One extra row tells us whether the list was cut off.
+      limit: q.limit + 1,
     });
-    const opps = await repo.getOpportunities(matches.map((m) => m.opportunityId));
+    const truncated = matches.length > q.limit;
+    const page = matches.slice(0, q.limit);
+    const opps = await repo.getOpportunities(page.map((m) => m.opportunityId));
     return {
-      matches: matches
+      truncated,
+      matches: page
         .filter((m) => opps.has(m.opportunityId))
         .map((m) => ({ match: m, opportunity: opps.get(m.opportunityId)! })),
     };

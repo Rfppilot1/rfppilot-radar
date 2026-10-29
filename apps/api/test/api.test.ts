@@ -123,6 +123,11 @@ describe("Radar API", () => {
 
     const matches = (await app.inject({ url: "/v1/profiles/isf-main/matches", headers: ISF })).json().matches;
     expect(matches).toHaveLength(1);
+    const capped = (await app.inject({ url: "/v1/profiles/isf-main/matches?limit=1", headers: ISF })).json();
+    expect(capped.truncated).toBe(false);
+    expect(
+      (await app.inject({ url: "/v1/profiles/isf-main/matches?limit=2001", headers: ISF })).statusCode,
+    ).toBe(400);
     expect(matches[0].match.band).toBe("strong");
     expect(matches[0].opportunity.title).toBe(opp.title);
 

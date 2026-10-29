@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 /**
  * Staging gate and visit tracking.
- * - When WEB_PASSWORD is set, every page asks for it (HTTP Basic, any user name). Production will use WorkOS.
+ * - Every page asks for WEB_PASSWORD (HTTP Basic, any user name). Production will use WorkOS.
+ *   A production build with no password refuses to serve (fails closed) unless WEB_AUTH_DISABLED=1 says so on purpose.
  * - "New since my last visit": a visit is a run of requests with gaps under 30 minutes. When a new visit starts,
  *   the previous visit's last-seen time is kept in `radar_pv` and passed to pages as a request header.
  */
@@ -17,13 +18,16 @@ function timingSafeEqual(a: string, b: string): boolean {
 
 export function proxy(req: NextRequest) {
   const password = process.env.WEB_PASSWORD;
+  if (!password && process.env.NODE_ENV === "production" && process.env.WEB_AUTH_DISABLED !== "1")
+    return new NextResponse("Not configured: set WEB_PASSWORD", { status: 503 });
   if (password) {
     const header = req.headers.get("authorization") ?? "";
     const [scheme, encoded] = header.split(" ");
     let given = "";
     if (scheme === "Basic" && encoded) {
       try {
-        given = atob(encoded).split(":").slice(1).join(":");
+        const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+        given = new TextDecoder().decode(bytes).split(":").slice(1).join(":");
       } catch {
         given = "";
       }

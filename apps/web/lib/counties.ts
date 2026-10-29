@@ -5,6 +5,9 @@
  *   1. State-level buyers (state agencies) are statewide, never a county.
  *   2. A county named in the buyer, as "<Name> County ...", "School District of <Name>", "<Name> School District".
  *   3. A city, university or utility from the lookup tables below, matched as whole words.
+ *      A city counts only as "City/Town/Village of X", "X ISD", or when the buyer name starts with it, so
+ *      "Key Largo" is not Largo and "Stephen F. Austin State University" is not Austin. Names of three or more
+ *      words (universities, utilities) count anywhere in the buyer name.
  * Anything else is unplaced and reported as such on the map, never guessed.
  */
 export interface County {
@@ -189,12 +192,17 @@ export const PLACE_TO_COUNTY: Record<string, Record<string, string>> = {
     "University of North Florida": "Duval",
     "University of West Florida": "Escambia",
     "Florida Gulf Coast University": "Lee",
+    // Names that start with a city in another county.
+    "Key Largo": "Monroe",
+    "Orlando Sanford International Airport": "Seminole",
+    "Orlando Melbourne International Airport": "Brevard",
     OUC: "Orange",
     "Orlando Utilities Commission": "Orange",
     JEA: "Duval",
     "Tampa Bay Water": "Pinellas",
   },
   TX: {
+    "Stephen F. Austin State University": "Nacogdoches",
     Abilene: "Taylor",
     Allen: "Collin",
     Amarillo: "Potter",
@@ -327,10 +335,22 @@ export function placeBuyer(a: PlaceArgs): Placement {
   const places = PLACE_TO_COUNTY[a.state.toUpperCase()] ?? {};
   const keys = Object.keys(places).sort((x, y) => y.length - x.length);
   for (const k of keys) {
-    if (name.includes(norm(k))) {
+    if (placeNamed(name, norm(k))) {
       const c = byName.get(norm(places[k]!).trim());
       if (c) return { kind: "county", county: c };
     }
   }
   return { kind: "unplaced" };
+}
+
+/** `name` and `key` are normalized (space-padded). */
+function placeNamed(name: string, key: string): boolean {
+  const k = key.trim();
+  if (k.split(" ").length >= 3) return name.includes(key);
+  return (
+    name.startsWith(key) ||
+    [" city of ", " town of ", " village of "].some((p) => name.includes(`${p}${k} `)) ||
+    name.includes(`${key}isd `) ||
+    name.includes(`${key}independent school district `)
+  );
 }

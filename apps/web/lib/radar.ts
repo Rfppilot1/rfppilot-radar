@@ -1,3 +1,4 @@
+import "server-only";
 import type { Decision, FirmProfile, Match, Opportunity } from "@radar/core";
 
 /**
@@ -17,7 +18,8 @@ export interface Glance {
   bySource: Record<string, number>;
 }
 
-export const API_PAGE_LIMIT = 500;
+/** Matches fetched per load. The API says when there are more (`truncated`); pages then mark figures as partial. */
+export const API_PAGE_LIMIT = 2000;
 
 function config() {
   const url = process.env.RADAR_API_URL;
@@ -47,11 +49,11 @@ export async function getProfile(): Promise<FirmProfile> {
 }
 
 /** Open strong and possible matches (the API returns only open, not-yet-due notices). */
-export async function getMatches(): Promise<MatchItem[]> {
-  const r = await call<{ matches: MatchItem[] }>(
+export async function getMatches(): Promise<{ items: MatchItem[]; truncated: boolean }> {
+  const r = await call<{ matches: MatchItem[]; truncated?: boolean }>(
     `/v1/profiles/${pid()}/matches?band=strong,possible&limit=${API_PAGE_LIMIT}`,
   );
-  return r.matches;
+  return { items: r.matches, truncated: r.truncated ?? r.matches.length >= API_PAGE_LIMIT };
 }
 
 export async function getGlance(): Promise<Glance | null> {
@@ -66,7 +68,11 @@ export async function getDecisions(): Promise<Pick<Decision, "opportunityId" | "
   return r.decisions;
 }
 
-export async function recordDecision(opportunityId: string, decision: "watch" | "pass", decidedBy: string) {
+export async function recordDecision(
+  opportunityId: string,
+  decision: "watch" | "pass",
+  decidedBy: string,
+): Promise<void> {
   await call(`/v1/profiles/${pid()}/decisions`, {
     method: "POST",
     body: JSON.stringify({ opportunityId, decision, reason: null, decidedBy }),

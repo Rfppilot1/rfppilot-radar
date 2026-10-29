@@ -97,12 +97,26 @@ describe("placing a buyer on a county", () => {
     expect(d.kind === "county" && d.county.name).toBe("Dallas");
   });
 
+  it("does not read a city out of another place's name", () => {
+    const at = (buyer: string, state = "FL") => {
+      const p = place(state === "FL" ? FL : TX, buyer, "local", state);
+      return p.kind === "county" ? p.county.name : p.kind;
+    };
+    expect(at("Key Largo Fire Rescue")).toBe("Monroe");
+    expect(at("Orlando Sanford International Airport")).toBe("Seminole");
+    expect(at("City of Largo")).toBe("Pinellas");
+    expect(at("Greater Orlando Aviation Authority")).toBe("unplaced");
+    expect(at("Stephen F. Austin State University", "TX")).toBe("Nacogdoches");
+    expect(at("Austin Independent School District", "TX")).toBe("Travis");
+    expect(at("Temple ISD", "TX")).toBe("Bell");
+  });
+
   it("never places a state agency on a county, and never guesses", () => {
     expect(place(FL, "Orange County Sheriff", "state").kind).toBe("statewide");
     expect(place(FL, "Regional Mobility Authority").kind).toBe("unplaced");
     // "Orange" as a word in a name is not Orange County without the word "County".
     expect(place(FL, "Orange Blossom Water District").kind).toBe("unplaced");
-    expect(place(FL, "City of Miami Gardens").kind).toBe("county"); // Miami is inside the name; Miami-Dade
+    expect(place(FL, "Department of Transportation District 4").kind).toBe("unplaced");
   });
 });
 

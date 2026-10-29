@@ -1,5 +1,16 @@
 /** Display helpers. Dates show in the viewer's business time zone (Eastern for the pilot). */
-export const TIME_ZONE = process.env.RADAR_TIME_ZONE ?? "America/New_York";
+/** A time zone the runtime knows, or null. Source data and settings can carry names like "Eastern". */
+export function validZone(tz: string | null | undefined): string | null {
+  if (!tz) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
+  } catch {
+    return null;
+  }
+}
+
+export const TIME_ZONE = validZone(process.env.RADAR_TIME_ZONE) ?? "America/New_York";
 
 export function money(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
@@ -25,7 +36,7 @@ export function dateTime(iso: string | null, tz: string | null, timeZone = TIME_
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-    timeZone: tz ?? timeZone,
+    timeZone: validZone(tz) ?? timeZone,
     timeZoneName: "short",
   });
   return s;

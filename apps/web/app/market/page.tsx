@@ -9,7 +9,7 @@ import { money, TIME_ZONE } from "@/lib/format";
 import { stateMap } from "@/lib/geo";
 import { loadRadar } from "@/lib/load";
 import { marketStats } from "@/lib/market";
-import { getGlance } from "@/lib/radar";
+import { API_PAGE_LIMIT, getGlance } from "@/lib/radar";
 
 export const dynamic = "force-dynamic";
 const PATH = "/market";
@@ -20,7 +20,7 @@ export default async function Market({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const [data, glance] = await Promise.all([loadRadar(), getGlance().catch(() => null)]);
-  const { profile, items, ctx, now, place } = data;
+  const { profile, items, truncated, ctx, now, place } = data;
   // The market view ignores list-only settings (county, search, sort, open item); tab and fit still apply.
   const base = parseView(await searchParams, profile.states);
   const view: View = { ...base, county: null, q: "", open: null, sort: "fit" };
@@ -61,6 +61,12 @@ export default async function Market({
       </div>
 
       <Tabs tabs={tabs} active={view.tab} hrefFor={(tab) => viewHref(PATH, view, { tab })} />
+      {truncated && (
+        <p role="status" className="rounded-md bg-possible-bg px-3 py-2 text-sm text-possible">
+          Figures cover the top {API_PAGE_LIMIT.toLocaleString("en-US")} matches by fit only, so they are
+          partial.
+        </p>
+      )}
 
       <section aria-label="Summary" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tile label="Open bids that fit" value={stats.open.toLocaleString("en-US")} href={opp({})} />

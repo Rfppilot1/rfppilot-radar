@@ -9,7 +9,14 @@ export async function decide(form: FormData) {
   const answer = form.get("answer");
   const back = String(form.get("returnTo") ?? "/opportunities");
   if (!id || (answer !== "watch" && answer !== "pass")) throw new Error("Bad decision request");
-  await recordDecision(id, answer, "web (staging)");
   // Only return to our own page; never to a URL taken from the form as-is.
-  redirect(back.startsWith("/opportunities") && !back.startsWith("//") ? back : "/opportunities");
+  const safe = back.startsWith("/opportunities") && !back.startsWith("//") ? back : "/opportunities";
+  let saved = true;
+  try {
+    await recordDecision(id, answer, "web (staging)");
+  } catch (err) {
+    console.error(`decision for ${id} not saved: ${(err as Error).message}`);
+    saved = false;
+  }
+  redirect(saved ? safe : `${safe}${safe.includes("?") ? "&" : "?"}error=decision`);
 }

@@ -58,7 +58,11 @@ export function Detail({
         <div className="bg-card p-3">
           <dt className="text-xs font-semibold text-muted">Due</dt>
           <dd className="mt-0.5 font-semibold">{dateTime(o.dueAt, o.dueTimezone)}</dd>
-          {left !== null && <dd className="text-xs text-muted">{left} days left</dd>}
+          {left !== null && (
+            <dd className="text-xs text-muted">
+              {left < 0 ? "Past due" : `${left} ${left === 1 ? "day" : "days"} left`}
+            </dd>
+          )}
         </div>
         <div className="bg-card p-3">
           <dt className="text-xs font-semibold text-muted">Stated value</dt>
@@ -176,6 +180,7 @@ export function Detail({
 
       <footer className="border-t border-line p-4">
         <p className="mb-2 text-sm font-semibold">Worth a look?</p>
+        {answer === "pursue" && <p className="mb-2 text-sm text-strong">Marked as pursuing.</p>}
         <form action={decide} className="flex gap-2">
           <input type="hidden" name="opportunityId" value={o.id} />
           <input type="hidden" name="returnTo" value={returnTo} />

@@ -24,8 +24,9 @@ export default async function Opportunities({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const data = await loadRadar();
-  const { profile, items, ctx, now, decisionOf, place } = data;
-  const view = parseView(await searchParams, profile.states);
+  const { profile, items, truncated, ctx, now, decisionOf, place } = data;
+  const params = await searchParams;
+  const view = parseView(params, profile.states);
   const list = applyView(items, view, ctx);
   const tabs = tabCounts(items, view, profile.states, ctx);
   const open = view.open ? items.find((i) => i.opportunity.id === view.open) : undefined;
@@ -70,9 +71,16 @@ export default async function Opportunities({
           </Link>
         </p>
       )}
-      {items.length >= API_PAGE_LIMIT && (
+      {params.error === "decision" && (
+        <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+          Your answer was not saved. The bid may have closed or Radar was briefly unavailable. Please try
+          again.
+        </p>
+      )}
+      {truncated && (
         <p role="status" className="rounded-md bg-possible-bg px-3 py-2 text-sm text-possible">
-          Showing the first {API_PAGE_LIMIT} matches. Narrow the filters to see the rest.
+          Showing the top {API_PAGE_LIMIT.toLocaleString("en-US")} matches by fit. Counts are partial and
+          lower-scored bids may be missing.
         </p>
       )}
 
@@ -134,6 +142,7 @@ export default async function Opportunities({
                           <span className="font-semibold text-strong">You said yes</span>
                         )}
                         {answer === "pass" && <span className="font-semibold">You passed</span>}
+                        {answer === "pursue" && <span className="font-semibold text-strong">Pursuing</span>}
                       </p>
                     </Link>
                   </li>
