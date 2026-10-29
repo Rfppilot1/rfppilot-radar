@@ -379,6 +379,72 @@ describe.each(impls)("%s repository", (_name, make) => {
     expect(calls).toBe(5);
   });
 
+  it("tracks deliveries per recipient and falls back to the profile's last digest", async () => {
+    await repo.upsertProfile(profile(), NOW);
+    expect(await repo.lastDeliveryAt("isf", "isf-main", "a@x.co")).toBeNull();
+    await repo.recordDigest("isf", "isf-main", "2026-10-14T10:00:00.000Z");
+    expect(await repo.lastDeliveryAt("isf", "isf-main", "a@x.co")).toBe("2026-10-14T10:00:00.000Z");
+    await repo.recordDelivery({
+      tenantId: "isf",
+      profileId: "isf-main",
+      recipient: "A@X.co",
+      generatedAt: NOW,
+      messageId: "em_1",
+    });
+    expect(await repo.lastDeliveryAt("isf", "isf-main", "a@x.co")).toBe(NOW);
+    expect(await repo.lastDeliveryAt("isf", "isf-main", "b@x.co")).toBe("2026-10-14T10:00:00.000Z");
+    await expect(repo.lastDeliveryAt("other", "isf-main", "a@x.co")).rejects.toThrow(/not found/);
+    await expect(
+      repo.recordDelivery({
+        tenantId: "other",
+        profileId: "isf-main",
+        recipient: "a@x.co",
+        generatedAt: NOW,
+        messageId: null,
+      }),
+    ).rejects.toThrow(/not found/);
+  });
+
+  it("reports a source's last complete run", async () => {
+    const run = (finishedAt: string, complete: boolean) => ({
+      source: "tx-esbd",
+      startedAt: finishedAt,
+      finishedAt,
+      fetched: 1,
+      inserted: 0,
+      updated: 0,
+      closed: 0,
+      rejected: 0,
+      complete,
+      error: null,
+    });
+    expect(await repo.lastCompleteRunAt("tx-esbd")).toBeNull();
+    await repo.recordRun(run("2026-10-13T10:00:00.000Z", true));
+    await repo.recordRun(run("2026-10-14T10:00:00.000Z", false));
+    expect(await repo.lastCompleteRunAt("tx-esbd")).toBe("2026-10-13T10:00:00.000Z");
+  });
+
+  it("returns every row when asked for all, past the default cap of 500", async () => {
+    const many = Array.from({ length: 620 }, (_, i) => opp(String(i).padStart(4, "0")));
+    const r = await repo.upsertOpportunities(many, NOW);
+    expect(r.inserted).toHaveLength(620);
+    expect(await repo.listOpportunities({ openOnly: true })).toHaveLength(500);
+    expect(await repo.listOpportunities({ openOnly: true, limit: "all" })).toHaveLength(620);
+    await repo.upsertProfile(profile(), NOW);
+    expect(await rescoreProfile(repo, profile(), NOW)).toBe(620);
+    expect(
+      await repo.listMatches("isf", "isf-main", { bands: ["strong", "possible", "weak"], limit: "all" }),
+    ).toHaveLength(620);
+  });
+
+  it("takes and releases the worker lock and answers a health ping", async () => {
+    const lock = await repo.tryRunLock("worker");
+    expect(lock).not.toBeNull();
+    await lock!.release();
+    expect(await repo.tryRunLock("worker")).not.toBeNull();
+    await expect(repo.ping()).resolves.toBeUndefined();
+  });
+
   it("keeps the stored version of a partially fetched record instead of overwriting it", async () => {
     const full = opp("7", { codes: [{ system: "NIGP", code: "91875", description: null }] });
     await repo.upsertOpportunities([full], "2026-10-14T10:00:00.000Z");
@@ -474,5 +540,32 @@ describe("feedback-informed review", () => {
     await rescore(repo, p, NOW2, { reviewer });
     expect(seen.length).toBeGreaterThan(first); // feedback changed, so reviews are redone
     expect(seen.at(-1)).toBe(1);
+  });
+});
+
+describe("postgres transactions", () => {
+  it("rolls back a whole chunk when one record fails, leaving no record without its version", async () => {
+    const db = new PGlite();
+    await migrate(db as never);
+    const repo = new PostgresRepository(db as never);
+    // A record whose version insert fails: a trigger rejects version rows for one id.
+    await db.exec(`
+      CREATE FUNCTION reject_v() RETURNS trigger AS $$ BEGIN
+        IF NEW.opportunity_id = 'tx-esbd:2' THEN RAISE EXCEPTION 'version write failed'; END IF;
+        RETURN NEW; END $$ LANGUAGE plpgsql;
+      CREATE TRIGGER reject_v BEFORE INSERT ON opportunity_versions FOR EACH ROW EXECUTE FUNCTION reject_v();`);
+    await expect(repo.upsertOpportunities([opp("1"), opp("2")], NOW)).rejects.toThrow(/version write failed/);
+    expect(await repo.getOpportunity("tx-esbd:1")).toBeNull();
+    expect(await repo.getOpportunity("tx-esbd:2")).toBeNull();
+  });
+
+  it("applies migrations in a transaction and records each once", async () => {
+    const db = new PGlite();
+    expect(await migrate(db as never)).toEqual([
+      "001_init.sql",
+      "002_versions_seen_idx.sql",
+      "003_deliveries.sql",
+    ]);
+    expect(await migrate(db as never)).toEqual([]);
   });
 });

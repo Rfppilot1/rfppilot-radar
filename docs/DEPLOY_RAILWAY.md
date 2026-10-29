@@ -41,6 +41,8 @@ password never appears in this repo.
 | `RADAR_DIGEST_REPLAY_UNTIL` |     | ✓      | Optional. An ISO time; runs before it re-send the full current list (to preview a template change). Expires on its own |
 | `RADAR_TX_MAX_DETAILS`      |     | ✓      | Optional. Cap on Texas detail requests per run (default 600); unchanged postings are never re-fetched                  |
 | `RADAR_SAM_STATES`          |     | ✓      | `FL,TX`                                                                                                                |
+| `RADAR_ALERT_EMAIL`         |     | ✓      | Operator address for the after-run problem list, e.g. `ben@rfppilot.com`                                               |
+| `RADAR_SOURCE_DEADLINE_MIN` |     | ✓      | Optional. Minutes one source may run before it is stopped (default 45); what it fetched is kept                        |
 | `RADAR_USER_AGENT`          |     | ✓      | `RFPPilotRadar/0.1 (+https://rfppilot.com; ben@rfppilot.com)`                                                          |
 
 Never paste these values into chat, email, issues or code.
@@ -60,7 +62,9 @@ overwritten the next morning. Change targeting in the file instead until tenants
 - `https://<api-domain>/healthz` returns `{"ok":true}`.
 - The worker's first run logs one JSON line per source (`ingest`), then `score`, then `digest` with
   `emailed: true`.
-- Alert on: a source with `fetched: 0`, any `ingest_failed`, `close refused`, or `email_failed`.
+- Set `RADAR_ALERT_EMAIL` on the worker: after every run it emails that address a list of anything that went
+  wrong (a failed, empty, refused, time-limited or stale source; a profile not scored or not emailed). The run
+  also exits non-zero when a customer's email failed, so Railway marks it failed.
 
 ## Costs at this size
 

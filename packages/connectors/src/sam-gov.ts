@@ -1,4 +1,4 @@
-import { Opportunity, type ClassificationCode, type NoticeKind } from "@radar/core";
+import { Opportunity, isPublicUrl, type ClassificationCode, type NoticeKind } from "@radar/core";
 import { z } from "zod";
 import { HttpError, type HttpClient } from "./http.js";
 import {
@@ -115,7 +115,7 @@ export function normalizeSam(raw: unknown, fetchedAt: string): Opportunity {
         }
       : null,
     documents: (n.resourceLinks ?? [])
-      .filter((u) => /^https?:/.test(u))
+      .filter((u) => isPublicUrl(u))
       .map((url) => ({ filename: null, url, description: null, postedAt: null })),
     version: null,
     hasAddendum: false,

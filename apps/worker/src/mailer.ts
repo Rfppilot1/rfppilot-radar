@@ -9,6 +9,11 @@ export interface Mail {
   text: string;
   /** mailto: or https: unsubscribe target, sent as the List-Unsubscribe header. */
   unsubscribe?: string;
+  /**
+   * Sent as Resend's Idempotency-Key: a retry with the same key within 24 hours returns the first result
+   * instead of sending a second email.
+   */
+  idempotencyKey?: string;
 }
 
 export interface Mailer {
@@ -30,7 +35,11 @@ export class ResendMailer implements Mailer {
     if (mail.to.length === 0) return { id: null };
     const res = await this.fetchImpl("https://api.resend.com/emails", {
       method: "POST",
-      headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" },
+      headers: {
+        authorization: `Bearer ${this.apiKey}`,
+        "content-type": "application/json",
+        ...(mail.idempotencyKey ? { "idempotency-key": mail.idempotencyKey } : {}),
+      },
       signal: AbortSignal.timeout(30_000),
       body: JSON.stringify({
         from: this.from,

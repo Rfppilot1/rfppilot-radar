@@ -68,6 +68,8 @@ query checks ownership, and cross-tenant reads return 404. See `SECURITY.md`.
 - **Scheduler**: `radar daily` once per weekday morning (container job or cron), plus
   `radar ingest --sources tx-esbd` at midday if same-day freshness matters.
 - **Database**: managed Postgres 16. Migrations run at API and worker startup and are idempotent.
-- **Observability**: the worker writes one JSON log line per event; `ingest_runs` holds per-source counts and
+- **Observability**: after each run the worker emails the operator (`RADAR_ALERT_EMAIL`) a list of failed,
+  empty, refused, time-limited, unreadable or stale sources and failed profiles; `/healthz` checks the database.
+  The worker also writes one JSON log line per event; `ingest_runs` holds per-source counts and
   errors for alerting (alert when a source returns zero records or errors twice in a row).
 - **Secrets**: `RADAR_API_KEYS`, `SAM_API_KEY`, `ANTHROPIC_API_KEY` come from the platform's secret store.

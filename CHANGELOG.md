@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased: Reliable daily run
+
+- **One failure no longer stops the run.** Each profile is scored and emailed on its own: a failing profile is reported and every other customer still gets their email. The run exits non-zero when any customer-facing step failed, so the scheduler shows it.
+- **No duplicate or lost emails.** A worker lock (Postgres advisory lock) makes an overlapping run exit cleanly instead of ingesting and emailing twice. Every email now goes to one recipient, and each delivery is recorded per recipient (`digest_deliveries`, migration 003): a recipient whose send failed gets those items the next day, and nobody else sees them twice. Each send carries a Resend idempotency key, so a retry after a crash cannot send the same email again.
+- **Operator alerts.** After each run the worker checks itself and, when `RADAR_ALERT_EMAIL` is set, emails a list of problems: a source that failed, returned nothing, had a close refused, hit its time limit, could not read many records, or has had no complete run for 4 days; and any profile that was not scored or emailed. `/healthz` now checks the database (503 when unreachable).
+- **No silent caps.** Scoring and digests read every open notice and match (previously capped at 10,000 and 5,000 rows, which would have left the latest-due notices unscored as coverage grew). The API keeps its 500-row page limit.
+- **Database writes are atomic.** An opportunity and its version row, and a close and its version rows, are written in one transaction, so a crash cannot lose a change alert. Each migration and its record are applied in one transaction.
+- **Safer document links.** Only public http(s) document links are stored for Texas and SAM.gov and handed to RFP Pilot; links to private, loopback, link-local or metadata addresses, intranet names or other schemes are dropped.
+- **Bounded source requests.** Response bodies are capped at 25 MB, and each source has a time limit (`RADAR_SOURCE_DEADLINE_MIN`, default 45): a source past it stops, keeps what it fetched and closes nothing.
+- The daily run moved from the CLI into `apps/worker/src/daily.ts`, with tests.
+
 ## Unreleased: VendorLink (Florida local agencies)
 
 - New public source **VendorLink**: the shared site (about 115 agencies, nearly all in Florida: Brevard County, OUC, the Hillsborough, Polk, Manatee, Sarasota, Seminole and St. Johns school districts, Ocala, Kissimmee, St. Cloud and others) plus the Osceola County and Orange County Public Schools sites. Reads the public search form as a browser does; no sign-in.

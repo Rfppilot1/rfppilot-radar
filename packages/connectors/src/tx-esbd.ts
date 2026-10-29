@@ -1,6 +1,7 @@
 import {
   Opportunity,
   extractKeyDates,
+  isPublicUrl,
   parseMoney,
   valueFromText,
   type ClassificationCode,
@@ -117,7 +118,8 @@ export function normalizeTxEsbd(raw: unknown, fetchedAt: string, detailRaw?: unk
   const detail = detailRaw === undefined || detailRaw === null ? null : TxEsbdDetail.parse(detailRaw);
   const description = htmlToText(detail?.description);
   const documents = (detail?.attachments ?? []).flatMap((a) =>
-    a.fileURL
+    // An absolute fileURL replaces the base, so a link to anywhere is possible; keep public ones only.
+    a.fileURL && isPublicUrl(new URL(a.fileURL, TX_ESBD_BASE).toString())
       ? [
           {
             filename: a.fileName ?? null,

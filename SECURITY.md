@@ -15,11 +15,16 @@
 - **Input**: every request body and query is validated with zod; body size is capped at 256 KB.
 - **Outbound**: connectors only call documented source hosts, with timeouts on every request (body included)
   and a cap on server-requested retry delays; API keys are redacted from error messages and error objects.
+  Response bodies are capped at 25 MB and each source has a time limit. Document links from source data are
+  kept only when they point at the public internet over http(s) (`isPublicUrl`), so a handoff cannot carry a
+  link to a private or cloud-metadata address into RFP Pilot.
 - **Model input**: notice text sent to the optional reviewer is delimited, length-capped and marked as
   untrusted. A crafted notice could still sway a verdict, so a review alone cannot make a match "strong"
   (that needs rule-based evidence) and every review is stored with its rationale for audit.
 - **Secrets**: never committed (`.env` is git-ignored; `.env.example` holds names only).
-- **Data**: no personal data beyond the buyer contact details published in public notices.
+- **Data**: public notices (including the buyer contacts they publish), firm profiles and decisions, and the
+  email addresses of digest recipients with the time each digest was delivered (`digest_deliveries`). Logs and
+  alerts show recipients masked (`m***@isf.com`).
 
 ## Roadmap before enterprise customers
 

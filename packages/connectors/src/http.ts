@@ -10,6 +10,10 @@ export interface HttpClientOptions {
   maxRetries?: number;
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
+  /** Largest response body read, in bytes (default 25 MB). A bigger body fails the request without retry. */
+  maxBytes?: number;
+  /** Aborts every request (and any pending retry) made through this client, e.g. a per-source deadline. */
+  signal?: AbortSignal;
 }
 
 export class HttpError extends Error {
@@ -28,6 +32,15 @@ export class HttpError extends Error {
 
 /** Upper bound on a server-requested Retry-After, so a hostile or broken header cannot stall a run. */
 const MAX_RETRY_AFTER_MS = 60_000;
+const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
+
+/** A failure that retrying cannot fix (oversized body, the client's own deadline). */
+export class HttpAbortError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HttpAbortError";
+  }
+}
 
 export class HttpClient {
   private readonly lastByHost = new Map<string, number>();
@@ -55,7 +68,9 @@ export class HttpClient {
   async text(url: string, init: RequestInit = {}): Promise<string> {
     const maxRetries = this.opts.maxRetries ?? 3;
     for (let attempt = 0; ; attempt++) {
+      this.checkAborted(url);
       await this.throttle(url);
+      this.checkAborted(url);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), this.opts.timeoutMs ?? 30_000);
       let status: number;
@@ -64,13 +79,17 @@ export class HttpClient {
       try {
         const res = await this.fetchImpl(url, {
           ...init,
-          signal: controller.signal,
+          signal: this.opts.signal
+            ? AbortSignal.any([controller.signal, this.opts.signal])
+            : controller.signal,
           headers: { "user-agent": this.opts.userAgent, ...(init.headers ?? {}) },
         });
         status = res.status;
         retryAfter = Number(res.headers.get("retry-after"));
-        body = await res.text();
+        body = await readCapped(res, this.opts.maxBytes ?? DEFAULT_MAX_BYTES, url);
       } catch (err) {
+        if (err instanceof HttpAbortError) throw err;
+        this.checkAborted(url);
         if (attempt >= maxRetries) throw err;
         await this.sleep(backoff(attempt));
         continue;
@@ -85,6 +104,11 @@ export class HttpClient {
     }
   }
 
+  private checkAborted(url: string) {
+    if (this.opts.signal?.aborted)
+      throw new HttpAbortError(`Stopped before ${redact(url)}: source time limit reached`);
+  }
+
   private async throttle(url: string): Promise<void> {
     const host = new URL(url).host;
     const min = this.opts.minIntervalMs ?? 1000;
@@ -93,6 +117,30 @@ export class HttpClient {
     if (wait > 0) await this.sleep(wait);
     this.lastByHost.set(host, Date.now());
   }
+}
+
+/** Reads a response body, failing once it passes `max` bytes instead of holding an unbounded body in memory. */
+async function readCapped(res: Response, max: number, url: string): Promise<string> {
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > max) {
+    await res.body?.cancel().catch(() => {});
+    throw new HttpAbortError(`Response from ${redact(url)} is ${declared} bytes, over the ${max}-byte limit`);
+  }
+  if (!res.body) return res.text();
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => {});
+      throw new HttpAbortError(`Response from ${redact(url)} passed the ${max}-byte limit`);
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
 }
 
 function backoff(attempt: number): number {

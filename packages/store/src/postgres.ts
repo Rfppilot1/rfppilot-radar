@@ -5,10 +5,12 @@ import {
   MAX_CLOSE_SHARE,
   NotFoundError,
   type CloseResult,
+  type DeliveryRecord,
   type IngestRunRecord,
   type MatchQuery,
   type OpportunityQuery,
   type Repository,
+  type RunLock,
   type StoredDecision,
   type StoredMatch,
   type UpsertResult,
@@ -29,6 +31,10 @@ interface PoolLike extends Queryable {
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../migrations/", import.meta.url));
 const MIGRATION_LOCK = 72_727_001;
+/** Namespace for worker run locks (`tryRunLock`); the second key is hashtext(name). */
+const RUN_LOCK_NS = 72_727_002;
+/** Records written per transaction during ingest. */
+const UPSERT_CHUNK = 200;
 
 /**
  * Applies pending SQL migrations in filename order, each recorded in schema_migrations. Holds a Postgres
@@ -49,9 +55,17 @@ export async function migrate(pool: Queryable | PoolLike, dir = MIGRATIONS_DIR):
     for (const file of (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort()) {
       if (done.has(file)) continue;
       const sql = await readFile(`${dir}${file}`, "utf8");
-      if (db.exec) await db.exec(sql);
-      else await db.query(sql);
-      await db.query(`INSERT INTO schema_migrations (name) VALUES ($1)`, [file]);
+      // A migration and its record land together or not at all, so a failed one is retried whole.
+      await db.query("BEGIN");
+      try {
+        if (db.exec) await db.exec(sql);
+        else await db.query(sql);
+        await db.query(`INSERT INTO schema_migrations (name) VALUES ($1)`, [file]);
+        await db.query("COMMIT");
+      } catch (err) {
+        await db.query("ROLLBACK").catch(() => {});
+        throw err;
+      }
       applied.push(file);
     }
     return applied;
@@ -71,19 +85,69 @@ const toStoredMatch = (r: MatchRow): StoredMatch => ({
   firstGoodAt: iso(r.first_good_at),
 });
 
+type Q = Pick<Queryable, "query">;
+const limitSql = (limit: number | "all" | undefined, p: unknown[]) => {
+  if (limit === "all") return "";
+  p.push(limit ?? 500);
+  return ` LIMIT $${p.length}`;
+};
+
 export class PostgresRepository implements Repository {
   constructor(private readonly db: Queryable) {}
 
+  /** A dedicated pooled connection when the driver has a pool (pg.Pool); otherwise the single connection. */
+  private async lease(): Promise<{ q: Q; release: () => void }> {
+    const pool = this.db as Partial<PoolLike>;
+    if (typeof pool.connect === "function") {
+      const c = await pool.connect.call(this.db);
+      return { q: c, release: () => c.release() };
+    }
+    return { q: this.db, release: () => {} };
+  }
+
+  /** Runs `fn` in one transaction on one connection; rolls back on any error. */
+  private async tx<T>(fn: (q: Q) => Promise<T>): Promise<T> {
+    const { q, release } = await this.lease();
+    try {
+      await q.query("BEGIN");
+      try {
+        const out = await fn(q);
+        await q.query("COMMIT");
+        return out;
+      } catch (err) {
+        await q.query("ROLLBACK").catch(() => {});
+        throw err;
+      }
+    } finally {
+      release();
+    }
+  }
+
   /**
-   * Race-safe without explicit transactions: concurrent runs may both try to insert, but only one wins the
-   * INSERT; the other falls through to the conditional UPDATE, which only fires when content changed.
+   * Each record's row and its version row are written in the same transaction (chunks of UPSERT_CHUNK), so a
+   * crash can never leave a changed record without the version that change alerts are computed from.
+   * Records are written in id order, so two concurrent runs take row locks in the same order. Concurrent runs
+   * may both try to insert; only one wins the INSERT and the other falls through to the conditional UPDATE.
    */
   async upsertOpportunities(opps: Opportunity[], seenAt: string): Promise<UpsertResult> {
+    const r: UpsertResult = { inserted: [], updated: [], unchanged: 0 };
+    const sorted = [...opps].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    for (let i = 0; i < sorted.length; i += UPSERT_CHUNK) {
+      const chunk = sorted.slice(i, i + UPSERT_CHUNK);
+      const part = await this.tx((q) => this.upsertChunk(q, chunk, seenAt));
+      r.inserted.push(...part.inserted);
+      r.updated.push(...part.updated);
+      r.unchanged += part.unchanged;
+    }
+    return r;
+  }
+
+  private async upsertChunk(db: Q, opps: Opportunity[], seenAt: string): Promise<UpsertResult> {
     const r: UpsertResult = { inserted: [], updated: [], unchanged: 0 };
     for (const o of opps) {
       const h = o.provenance.contentHash;
       const data = JSON.stringify(o);
-      const ins = await this.db.query(
+      const ins = await db.query(
         `INSERT INTO opportunities (id, source, source_record_id, status, kind, state, posted_at, due_at, content_hash,
            first_seen_at, last_seen_at, last_changed_at, data)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$10,$11)
@@ -91,7 +155,7 @@ export class PostgresRepository implements Repository {
         [o.id, o.source, o.sourceRecordId, o.status, o.kind, o.state, o.postedAt, o.dueAt, h, seenAt, data],
       );
       if (ins.rows.length === 0) {
-        const upd = await this.db.query(
+        const upd = await db.query(
           `UPDATE opportunities SET status=$2, kind=$3, state=$4, posted_at=$5, due_at=$6, content_hash=$7,
              last_seen_at=$8, last_changed_at=$8, data=$9
            WHERE id=$1 AND content_hash <> $7 RETURNING id`,
@@ -99,7 +163,7 @@ export class PostgresRepository implements Repository {
         );
         if (upd.rows.length === 0) {
           // Same content but a different stored status: a record closed by absence has reappeared upstream.
-          const reopened = await this.db.query(
+          const reopened = await db.query(
             `UPDATE opportunities SET status=$2, data=$3, last_seen_at=GREATEST(last_seen_at, $4)
               WHERE id=$1 AND status <> $2 RETURNING id`,
             [o.id, o.status, data, seenAt],
@@ -108,10 +172,10 @@ export class PostgresRepository implements Repository {
             r.updated.push(o.id);
             continue;
           }
-          await this.db.query(
-            `UPDATE opportunities SET last_seen_at=GREATEST(last_seen_at, $2) WHERE id=$1`,
-            [o.id, seenAt],
-          );
+          await db.query(`UPDATE opportunities SET last_seen_at=GREATEST(last_seen_at, $2) WHERE id=$1`, [
+            o.id,
+            seenAt,
+          ]);
           r.unchanged++;
           continue;
         }
@@ -119,7 +183,7 @@ export class PostgresRepository implements Repository {
       } else {
         r.inserted.push(o.id);
       }
-      await this.db.query(
+      await db.query(
         `INSERT INTO opportunity_versions (opportunity_id, content_hash, seen_at, data) VALUES ($1,$2,$3,$4)`,
         [o.id, h, seenAt, data],
       );
@@ -140,23 +204,27 @@ export class PostgresRepository implements Repository {
     const result = { closed: [] as string[], refused: false, wouldClose: missing, open };
     if (missing === 0) return result;
     if (missing > open * maxShare) return { ...result, refused: true };
-    const rows = (
-      await this.db.query<{ id: string }>(
-        `UPDATE opportunities
+    // The close and its version rows commit together, so a digest never misses a pulled posting.
+    const closed = await this.tx(async (db) => {
+      const rows = (
+        await db.query<{ id: string }>(
+          `UPDATE opportunities
             SET status = 'closed', data = jsonb_set(data, '{status}', '"closed"')
           WHERE source = $1 AND status IN ('open','preview') AND last_seen_at < $2
           RETURNING id`,
-        [source, seenSince],
-      )
-    ).rows;
-    // Record the close as a version, so a digest can tell a reader that a tracked posting was pulled.
-    if (rows.length)
-      await this.db.query(
-        `INSERT INTO opportunity_versions (opportunity_id, content_hash, seen_at, data)
+          [source, seenSince],
+        )
+      ).rows;
+      // Record the close as a version, so a digest can tell a reader that a tracked posting was pulled.
+      if (rows.length)
+        await db.query(
+          `INSERT INTO opportunity_versions (opportunity_id, content_hash, seen_at, data)
          SELECT id, content_hash, $2, data FROM opportunities WHERE id = ANY($1)`,
-        [rows.map((r) => r.id), seenSince],
-      );
-    return { ...result, closed: rows.map((r) => r.id) };
+          [rows.map((r) => r.id), seenSince],
+        );
+      return rows.map((r) => r.id);
+    });
+    return { ...result, closed };
   }
 
   async touchSeen(ids: string[], seenAt: string) {
@@ -225,9 +293,8 @@ export class PostgresRepository implements Repository {
       p.push(q.dueAfter);
       where.push(`(due_at IS NULL OR due_at >= $${p.length})`);
     }
-    p.push(q.limit ?? 500);
     const sql = `SELECT data FROM opportunities ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-                 ORDER BY due_at ASC NULLS LAST LIMIT $${p.length}`;
+                 ORDER BY due_at ASC NULLS LAST, id${limitSql(q.limit, p)}`;
     return (await this.db.query<{ data: unknown }>(sql, p)).rows.map((r) => Opportunity.parse(json(r.data)));
   }
 
@@ -317,13 +384,13 @@ export class PostgresRepository implements Repository {
       p.push(q.activeAt);
       where.push(`o.status IN ('open','preview') AND (o.due_at IS NULL OR o.due_at >= $${p.length})`);
     }
-    p.push(q.limit ?? 500);
+    const lim = limitSql(q.limit, p);
     const rows = (
       await this.db.query<MatchRow>(
         `SELECT m.data, m.first_matched_at, m.first_good_at
            FROM matches m JOIN opportunities o ON o.id = m.opportunity_id
           WHERE ${where.join(" AND ")}
-          ORDER BY m.score DESC LIMIT $${p.length}`,
+          ORDER BY m.score DESC, m.opportunity_id${lim}`,
         p,
       )
     ).rows;
@@ -385,6 +452,70 @@ export class PostgresRepository implements Repository {
       `INSERT INTO digest_runs (tenant_id, profile_id, generated_at) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
       [tenantId, profileId, generatedAt],
     );
+  }
+
+  async lastDeliveryAt(tenantId: string, profileId: string, recipient: string) {
+    await this.assertProfile(tenantId, profileId);
+    const r = (
+      await this.db.query<{ at: unknown }>(
+        `SELECT max(generated_at) AS at FROM digest_deliveries
+          WHERE tenant_id=$1 AND profile_id=$2 AND recipient=$3`,
+        [tenantId, profileId, recipient.trim().toLowerCase()],
+      )
+    ).rows[0];
+    return iso(r?.at ?? null) ?? (await this.lastDigestAt(tenantId, profileId));
+  }
+
+  async recordDelivery(d: DeliveryRecord) {
+    await this.assertProfile(d.tenantId, d.profileId);
+    await this.db.query(
+      `INSERT INTO digest_deliveries (tenant_id, profile_id, recipient, generated_at, message_id)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
+      [d.tenantId, d.profileId, d.recipient.trim().toLowerCase(), d.generatedAt, d.messageId],
+    );
+  }
+
+  async lastCompleteRunAt(source: string) {
+    const r = (
+      await this.db.query<{ at: unknown }>(
+        `SELECT max(finished_at) AS at FROM ingest_runs WHERE source=$1 AND complete`,
+        [source],
+      )
+    ).rows[0];
+    return iso(r?.at ?? null);
+  }
+
+  /** Session-level advisory lock held on one pooled connection for the length of the run. */
+  async tryRunLock(name: string): Promise<RunLock | null> {
+    const { q, release } = await this.lease();
+    try {
+      const got = (
+        await q.query<{ ok: boolean }>(`SELECT pg_try_advisory_lock($1::int, hashtext($2)) AS ok`, [
+          RUN_LOCK_NS,
+          name,
+        ])
+      ).rows[0]?.ok;
+      if (!got) {
+        release();
+        return null;
+      }
+    } catch (err) {
+      release();
+      throw err;
+    }
+    return {
+      release: async () => {
+        try {
+          await q.query(`SELECT pg_advisory_unlock($1::int, hashtext($2))`, [RUN_LOCK_NS, name]);
+        } finally {
+          release();
+        }
+      },
+    };
+  }
+
+  async ping() {
+    await this.db.query(`SELECT 1`);
   }
 
   async recordRun(run: IngestRunRecord) {

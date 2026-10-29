@@ -5,10 +5,12 @@ import {
   MAX_CLOSE_SHARE,
   NotFoundError,
   type CloseResult,
+  type DeliveryRecord,
   type IngestRunRecord,
   type MatchQuery,
   type OpportunityQuery,
   type Repository,
+  type RunLock,
   type StoredDecision,
   type StoredMatch,
   type UpsertResult,
@@ -25,6 +27,8 @@ export class MemoryRepository implements Repository {
   private digests = new Map<string, string>();
   readonly versions: { opportunityId: string; contentHash: string; seenAt: string; data: Opportunity }[] = [];
   readonly runs: IngestRunRecord[] = [];
+  readonly deliveries: DeliveryRecord[] = [];
+  private locks = new Set<string>();
 
   async upsertOpportunities(opps: Opportunity[], seenAt: string): Promise<UpsertResult> {
     const r: UpsertResult = { inserted: [], updated: [], unchanged: 0 };
@@ -115,8 +119,8 @@ export class MemoryRepository implements Repository {
       .filter((o) => !q.sources || q.sources.includes(o.source))
       .filter((o) => !q.openOnly || ACTIVE_STATUSES.has(o.status))
       .filter((o) => !q.dueAfter || o.dueAt === null || o.dueAt >= q.dueAfter)
-      .sort((a, b) => (a.dueAt ?? "9999").localeCompare(b.dueAt ?? "9999"))
-      .slice(0, q.limit ?? 500);
+      .sort((a, b) => (a.dueAt ?? "9999").localeCompare(b.dueAt ?? "9999") || a.id.localeCompare(b.id))
+      .slice(0, q.limit === "all" ? undefined : (q.limit ?? 500));
   }
 
   async upsertProfile(profile: FirmProfile, _at?: string) {
@@ -167,8 +171,8 @@ export class MemoryRepository implements Repository {
         const o = this.opps.get(m.opportunityId)?.opp;
         return !!o && ACTIVE_STATUSES.has(o.status) && (o.dueAt === null || o.dueAt >= q.activeAt);
       })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, q.limit ?? 500)
+      .sort((a, b) => b.score - a.score || a.opportunityId.localeCompare(b.opportunityId))
+      .slice(0, q.limit === "all" ? undefined : (q.limit ?? 500))
       .map(({ tenantId: _t, ...m }) => m);
   }
 
@@ -206,9 +210,37 @@ export class MemoryRepository implements Repository {
     this.digests.set(key(tenantId, profileId), generatedAt);
   }
 
+  async lastDeliveryAt(tenantId: string, profileId: string, recipient: string) {
+    await this.assertProfile(tenantId, profileId);
+    const r = recipient.trim().toLowerCase();
+    const mine = this.deliveries
+      .filter((d) => d.tenantId === tenantId && d.profileId === profileId && d.recipient === r)
+      .map((d) => d.generatedAt)
+      .sort();
+    return mine.at(-1) ?? (await this.lastDigestAt(tenantId, profileId));
+  }
+
+  async recordDelivery(d: DeliveryRecord) {
+    await this.assertProfile(d.tenantId, d.profileId);
+    this.deliveries.push({ ...d, recipient: d.recipient.trim().toLowerCase() });
+  }
+
   async recordRun(run: IngestRunRecord) {
     this.runs.push(run);
   }
+
+  async lastCompleteRunAt(source: string) {
+    const done = this.runs.filter((r) => r.source === source && r.complete).map((r) => r.finishedAt);
+    return done.sort().at(-1) ?? null;
+  }
+
+  async tryRunLock(name: string): Promise<RunLock | null> {
+    if (this.locks.has(name)) return null;
+    this.locks.add(name);
+    return { release: async () => void this.locks.delete(name) };
+  }
+
+  async ping() {}
 
   async close() {}
 }

@@ -640,4 +640,46 @@ describe("Florida content hash", () => {
     expect(h({ ...detail, timeRemaining: "44 days 0 hours", favorite: true, editable: false })).toBe(base);
     expect(h({ ...detail, description: "Revised scope", timeRemaining: "1 day" })).not.toBe(base);
   });
+
+  it("refuses an oversized body without retrying, and stops every request once its signal aborts", async () => {
+    let calls = 0;
+    const big = new HttpClient({
+      userAgent: "t",
+      maxBytes: 10,
+      minIntervalMs: 0,
+      sleep: noSleep,
+      fetchImpl: (async () => {
+        calls++;
+        return new Response("x".repeat(50));
+      }) as typeof fetch,
+    });
+    await expect(big.text("https://x.test/big")).rejects.toThrow(/10-byte limit/);
+    expect(calls).toBe(1);
+    const declared = new HttpClient({
+      userAgent: "t",
+      maxBytes: 10,
+      minIntervalMs: 0,
+      sleep: noSleep,
+      fetchImpl: (async () =>
+        new Response("small", { headers: { "content-length": "999" } })) as typeof fetch,
+    });
+    await expect(declared.text("https://x.test/declared")).rejects.toThrow(/999 bytes/);
+
+    const controller = new AbortController();
+    let n = 0;
+    const http = new HttpClient({
+      userAgent: "t",
+      minIntervalMs: 0,
+      sleep: noSleep,
+      signal: controller.signal,
+      fetchImpl: (async () => {
+        n++;
+        controller.abort();
+        throw new Error("aborted");
+      }) as typeof fetch,
+    });
+    await expect(http.text("https://x.test/a")).rejects.toThrow(/time limit/);
+    await expect(http.text("https://x.test/b")).rejects.toThrow(/time limit/);
+    expect(n).toBe(1);
+  });
 });
