@@ -20,15 +20,10 @@ import {
 } from "@radar/connectors";
 import {
   FirmProfile,
-  renderDigestHtml,
   renderDigestMarkdown,
   renderDigestText,
   type Opportunity,
   type SourceId,
-  type FeedbackVote,
-  fallbackSummary,
-  feedbackUrl,
-  signFeedbackToken,
 } from "@radar/core";
 import {
   MemoryRepository,
@@ -37,13 +32,22 @@ import {
   FEDERAL_MIN_SCORE,
   ingestRun,
   migrate,
-  rescoreProfile,
   type Repository,
 } from "@radar/store";
 import pg from "pg";
 import { AnthropicReviewer } from "./anthropic-reviewer.js";
 import { AnthropicSummarizer } from "./anthropic-summarizer.js";
-import { ResendMailer, digestSubject, parseRecipients, recipientsFor, type Mailer } from "./mailer.js";
+import {
+  deliverDigests,
+  healthProblems,
+  ingestSources,
+  scoreProfiles,
+  sendAlert,
+  type IngestJob,
+  type ProfileResult,
+  type SourceResult,
+} from "./daily.js";
+import { ResendMailer, parseRecipients, type Mailer } from "./mailer.js";
 import { recentSignals } from "./signals.js";
 
 /**
@@ -62,6 +66,8 @@ const USER_AGENT = process.env.RADAR_USER_AGENT ?? "RFPPilotRadar/0.1 (+https://
 async function openRepo(): Promise<Repository> {
   if (process.env.DATABASE_URL) {
     const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 4 });
+    // An idle pooled connection that drops emits "error"; log it instead of crashing the run.
+    pool.on("error", (err) => log({ event: "db_connection_error", error: err.message }));
     await migrate(pool);
     return new PostgresRepository(pool);
   }
@@ -73,13 +79,16 @@ async function openRepo(): Promise<Repository> {
   return new MemoryRepository();
 }
 
-function connectors(
-  sources: SourceId[],
-  txKnown: ReadonlyMap<string, string> = new Map(),
-): SourceConnector[] {
-  const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1500 });
-  const out: SourceConnector[] = [];
+/** Minutes a single source may run before it is stopped (its fetched records are kept). Default 45. */
+const SOURCE_DEADLINE_MS = Number(process.env.RADAR_SOURCE_DEADLINE_MIN ?? 45) * 60_000;
+
+/** One connector per source, each with its own HTTP client so a deadline stops only that source. */
+function connectors(sources: SourceId[], txKnown: ReadonlyMap<string, string> = new Map()): IngestJob[] {
+  const jobs: IngestJob[] = [];
   for (const s of sources) {
+    const controller = new AbortController();
+    const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1500, signal: controller.signal });
+    const out: SourceConnector[] = [];
     if (s === "tx-esbd")
       out.push(
         new TxEsbdConnector({
@@ -125,8 +134,9 @@ function connectors(
         }),
       );
     }
+    for (const connector of out) jobs.push({ connector, controller });
   }
-  return out;
+  return jobs;
 }
 
 const NORMALIZERS: Record<string, (raw: unknown, at: string) => Opportunity> = {
@@ -137,7 +147,7 @@ const NORMALIZERS: Record<string, (raw: unknown, at: string) => Opportunity> = {
 
 /** Texas records already stored with their detail, so unchanged postings are not fetched again. */
 async function txKnown(repo: Repository): Promise<Map<string, string>> {
-  const stored = await repo.listOpportunities({ sources: ["tx-esbd"], openOnly: true, limit: 20_000 });
+  const stored = await repo.listOpportunities({ sources: ["tx-esbd"], openOnly: true, limit: "all" });
   return new Map(
     stored
       .filter((o) => o.provenance.detailVersion === TX_DETAIL_VERSION && o.provenance.listHash)
@@ -145,48 +155,9 @@ async function txKnown(repo: Repository): Promise<Map<string, string>> {
   );
 }
 
-async function ingest(repo: Repository, sources: SourceId[], max?: number) {
+async function ingest(repo: Repository, sources: SourceId[], max?: number): Promise<SourceResult[]> {
   const known = sources.includes("tx-esbd") ? await txKnown(repo) : new Map<string, string>();
-  for (const c of connectors(sources, known)) {
-    const started = new Date().toISOString();
-    try {
-      log({ event: "ingest_start", source: c.id, rssMb: Math.round(process.memoryUsage().rss / 1e6) });
-      const run = await c.fetch({ maxRecords: max });
-      const r = await ingestRun(repo, run, started);
-      log({
-        event: "ingest",
-        source: c.id,
-        fetched: run.opportunities.length,
-        inserted: r.inserted.length,
-        updated: r.updated.length,
-        closed: r.closed.length,
-        rejected: run.rejected.length,
-        // The first few rejects, so a failing portal or record shape shows up in the run log.
-        rejectedSample: run.rejected.slice(0, 3),
-        complete: run.complete,
-      });
-    } catch (err) {
-      // One failing source must not stop the others; the failure is recorded for monitoring.
-      await repo.recordRun({
-        source: c.id,
-        startedAt: started,
-        finishedAt: new Date().toISOString(),
-        fetched: 0,
-        inserted: 0,
-        updated: 0,
-        closed: 0,
-        rejected: 0,
-        complete: false,
-        error: (err as Error).message.slice(0, 500),
-      });
-      log({
-        event: "ingest_failed",
-        source: c.id,
-        error: (err as Error).message,
-        detail: (err as { body?: string }).body?.slice(0, 300),
-      });
-    }
-  }
+  return ingestSources(repo, connectors(sources, known), { log, max, deadlineMs: SOURCE_DEADLINE_MS });
 }
 
 async function importFile(repo: Repository, source: string, file: string) {
@@ -226,21 +197,33 @@ async function importFile(repo: Repository, source: string, file: string) {
   });
 }
 
-async function scoreAll(repo: Repository) {
-  const now = new Date().toISOString();
+async function scoreAll(repo: Repository): Promise<ProfileResult[]> {
   // The semantic reviewer is optional: without ANTHROPIC_API_KEY, scoring is purely rule-based.
   const reviewer = process.env.ANTHROPIC_API_KEY
     ? new AnthropicReviewer(process.env.ANTHROPIC_API_KEY)
     : undefined;
-  const maxReviews = Number(process.env.RADAR_MAX_REVIEWS ?? 50);
-  for (const p of await repo.listAllProfilesForWorker()) {
-    const scored = await rescoreProfile(repo, p, now, {
-      reviewer,
-      maxReviews,
-      onReviewError: (id, err) =>
-        log({ event: "review_failed", profile: p.id, opportunity: id, error: err.message }),
-    });
-    log({ event: "score", profile: p.id, scored, reviewer: reviewer?.id ?? null });
+  return scoreProfiles(repo, {
+    log,
+    now: new Date().toISOString(),
+    reviewer,
+    maxReviews: Number(process.env.RADAR_MAX_REVIEWS ?? 50),
+  });
+}
+
+/**
+ * Runs `fn` holding the worker lock, so an overlapping scheduled run (or a manual one during it) does not
+ * ingest twice or send the same emails twice. Without the lock, the second run logs and exits cleanly.
+ */
+async function withWorkerLock(repo: Repository, fn: () => Promise<void>): Promise<void> {
+  const lock = await repo.tryRunLock("worker");
+  if (!lock) {
+    log({ event: "run_skipped", reason: "another worker run holds the lock" });
+    return;
+  }
+  try {
+    await fn();
+  } finally {
+    await lock.release().catch((err: Error) => log({ event: "unlock_failed", error: err.message }));
   }
 }
 
@@ -259,6 +242,93 @@ process.on("unhandledRejection", (err) => {
   log({ event: "fatal", error: `unhandled rejection: ${(err as Error)?.message ?? String(err)}` });
   process.exit(1);
 });
+
+async function daily(
+  repo: Repository,
+  values: { profiles?: string; imports?: string; signals?: string; "out-dir"?: string },
+  sources: SourceId[],
+  max: number | undefined,
+): Promise<void> {
+  // Optional: load profiles and pre-captured raw files first (useful with the in-memory store).
+  for (const f of (values.profiles ?? "").split(",").filter(Boolean)) {
+    await repo.upsertProfile(
+      FirmProfile.parse(JSON.parse(await readFile(f, "utf8"))),
+      new Date().toISOString(),
+    );
+  }
+  for (const spec of (values.imports ?? "").split(",").filter(Boolean)) {
+    const [source, file] = spec.split("=");
+    if (!source || !file) throw new Error("--imports entries look like source=file.json");
+    await importFile(repo, source, file);
+  }
+  const sourceResults = (sources as string[]).includes("none") ? [] : await ingest(repo, sources, max);
+  const scoreResults = await scoreAll(repo);
+
+  const dir = values["out-dir"] ?? "data/digests";
+  await mkdir(dir, { recursive: true }).catch((err: Error) =>
+    log({ event: "digest_files_failed", error: err.message }),
+  );
+  const now = new Date().toISOString();
+  const mailer: Mailer | null =
+    process.env.RESEND_API_KEY && process.env.RADAR_EMAIL_FROM
+      ? new ResendMailer(process.env.RESEND_API_KEY, process.env.RADAR_EMAIL_FROM)
+      : null;
+  // Test send: RADAR_TEST_RECIPIENT gets the email instead of the real recipients, the subject is marked
+  // [TEST], and nothing is recorded as delivered, so the real recipients' next email is unchanged.
+  // Active only until RADAR_TEST_UNTIL (ISO time), so a forgotten setting cannot divert real emails.
+  const testTo =
+    process.env.RADAR_TEST_RECIPIENT && (process.env.RADAR_TEST_UNTIL ?? "") > now
+      ? process.env.RADAR_TEST_RECIPIENT.trim()
+      : null;
+  if (testTo && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(testTo))
+    throw new Error("RADAR_TEST_RECIPIENT must be one email address");
+  if (testTo) log({ event: "test_send", until: process.env.RADAR_TEST_UNTIL });
+  // Yes/No feedback links need the signing secret and the API's public address. They appear in test sends,
+  // and in real emails only once RADAR_FEEDBACK_LIVE=1, so the feature can be tried end to end first.
+  const feedback =
+    process.env.RADAR_FEEDBACK_SECRET &&
+    process.env.RADAR_PUBLIC_URL &&
+    (testTo || process.env.RADAR_FEEDBACK_LIVE === "1")
+      ? { secret: process.env.RADAR_FEEDBACK_SECRET, baseUrl: process.env.RADAR_PUBLIC_URL }
+      : null;
+  // One FEMA lookup per (states, since) per run, shared across profiles.
+  const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1000 });
+  const signalCache = new Map<string, ReturnType<typeof recentSignals>>();
+  const digestResults = await deliverDigests(repo, {
+    log,
+    now,
+    mailer,
+    recipientOverrides: parseRecipients(process.env.RADAR_RECIPIENTS),
+    testTo,
+    feedback,
+    unsubscribe: `mailto:${process.env.RADAR_UNSUBSCRIBE_EMAIL ?? "radar-unsubscribe@rfppilot.com"}?subject=unsubscribe`,
+    // RADAR_DIGEST_REPLAY_UNTIL (ISO time) re-sends the full current list on runs before that time, for
+    // previewing a template change. It expires on its own, so a forgotten setting cannot spam anyone.
+    replay: (process.env.RADAR_DIGEST_REPLAY_UNTIL ?? "") > now,
+    federalMinScore: Number(process.env.RADAR_FEDERAL_MIN_SCORE ?? FEDERAL_MIN_SCORE),
+    summarizer:
+      process.env.ANTHROPIC_API_KEY && process.env.RADAR_SUMMARY !== "off"
+        ? new AnthropicSummarizer(process.env.ANTHROPIC_API_KEY)
+        : null,
+    signalsFor:
+      values.signals === "off"
+        ? undefined
+        : (states, since) => {
+            const key = `${[...states].sort().join(",")}|${since.slice(0, 10)}`;
+            if (!signalCache.has(key)) signalCache.set(key, recentSignals(http, states, since));
+            return signalCache.get(key)!;
+          },
+    writeFiles: async (stem, files) => {
+      for (const [ext, body] of Object.entries(files)) await writeFile(`${dir}/${stem}.${ext}`, body);
+    },
+  });
+
+  // Health check: one email to the operator (RADAR_ALERT_EMAIL) listing anything that went wrong.
+  const problems = await healthProblems(repo, sourceResults, [...scoreResults, ...digestResults], now);
+  await sendAlert({ mailer, to: process.env.RADAR_ALERT_EMAIL?.trim() || null, log, now }, problems);
+  // A customer-facing failure (a profile not scored or not emailed) fails the run, so the scheduler shows it.
+  if ([...scoreResults, ...digestResults].some((r) => !r.ok)) process.exitCode = 1;
+}
 
 async function main() {
   const { positionals, values } = parseArgs({
@@ -291,12 +361,16 @@ async function main() {
       await repo.upsertProfile(p, new Date().toISOString());
       log({ event: "profile_loaded", profile: p.id, tenant: p.tenantId });
     } else if (cmd === "ingest") {
-      await ingest(repo, sources, max);
+      await withWorkerLock(repo, async () => {
+        await ingest(repo, sources, max);
+      });
     } else if (cmd === "import") {
       if (!values.source || !values.file) throw new Error("import needs --source and --file");
       await importFile(repo, values.source, values.file);
     } else if (cmd === "score") {
-      await scoreAll(repo);
+      await withWorkerLock(repo, async () => {
+        if ((await scoreAll(repo)).some((r) => !r.ok)) process.exitCode = 1;
+      });
     } else if (cmd === "digest") {
       if (!values.tenant || !values.profile) throw new Error("digest needs --tenant and --profile");
       const now = new Date().toISOString();
@@ -319,156 +393,7 @@ async function main() {
       if (values.out) await writeFile(values.out, out);
       else process.stdout.write(`${out}\n`);
     } else if (cmd === "daily") {
-      // Optional: load profiles and pre-captured raw files first (useful with the in-memory store).
-      for (const f of (values.profiles ?? "").split(",").filter(Boolean)) {
-        await repo.upsertProfile(
-          FirmProfile.parse(JSON.parse(await readFile(f, "utf8"))),
-          new Date().toISOString(),
-        );
-      }
-      for (const spec of (values.imports ?? "").split(",").filter(Boolean)) {
-        const [source, file] = spec.split("=");
-        if (!source || !file) throw new Error("--imports entries look like source=file.json");
-        await importFile(repo, source, file);
-      }
-      if (values.sources !== "none") await ingest(repo, sources, max);
-      await scoreAll(repo);
-      const dir = values["out-dir"] ?? "data/digests";
-      await mkdir(dir, { recursive: true }).catch((err: Error) =>
-        log({ event: "digest_files_failed", error: err.message }),
-      );
-      const now = new Date().toISOString();
-      const mailer: Mailer | null =
-        process.env.RESEND_API_KEY && process.env.RADAR_EMAIL_FROM
-          ? new ResendMailer(process.env.RESEND_API_KEY, process.env.RADAR_EMAIL_FROM)
-          : null;
-      const recipientOverrides = parseRecipients(process.env.RADAR_RECIPIENTS);
-      const summarizer =
-        process.env.ANTHROPIC_API_KEY && process.env.RADAR_SUMMARY !== "off"
-          ? new AnthropicSummarizer(process.env.ANTHROPIC_API_KEY)
-          : null;
-      const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1000 });
-      // Test send: RADAR_TEST_RECIPIENT gets the email instead of the real recipients, the subject is marked
-      // [TEST], and the digest is NOT recorded as delivered, so the real recipients' next email is unchanged.
-      // Active only until RADAR_TEST_UNTIL (ISO time), so a forgotten setting cannot divert real emails.
-      const testTo =
-        process.env.RADAR_TEST_RECIPIENT && (process.env.RADAR_TEST_UNTIL ?? "") > now
-          ? process.env.RADAR_TEST_RECIPIENT.trim()
-          : null;
-      if (testTo && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(testTo))
-        throw new Error("RADAR_TEST_RECIPIENT must be one email address");
-      if (testTo) log({ event: "test_send", until: process.env.RADAR_TEST_UNTIL });
-      // Yes/No feedback links need the signing secret and the API's public address. They appear in test
-      // sends, and in real emails only once RADAR_FEEDBACK_LIVE=1, so the feature can be tried end to end
-      // before any customer sees it.
-      const feedback =
-        process.env.RADAR_FEEDBACK_SECRET &&
-        process.env.RADAR_PUBLIC_URL &&
-        (testTo || process.env.RADAR_FEEDBACK_LIVE === "1")
-          ? { secret: process.env.RADAR_FEEDBACK_SECRET, baseUrl: process.env.RADAR_PUBLIC_URL }
-          : null;
-      const unsubscribe = `mailto:${process.env.RADAR_UNSUBSCRIBE_EMAIL ?? "radar-unsubscribe@rfppilot.com"}?subject=unsubscribe`;
-      // One FEMA lookup per (states, since) per run, shared across profiles.
-      const signalCache = new Map<string, Promise<Awaited<ReturnType<typeof recentSignals>>>>();
-      const signalsFor = (states: string[], since: string) => {
-        const key = `${[...states].sort().join(",")}|${since.slice(0, 10)}`;
-        if (!signalCache.has(key)) signalCache.set(key, recentSignals(http, states, since));
-        return signalCache.get(key)!;
-      };
-      for (const p of await repo.listAllProfilesForWorker()) {
-        // New = since the last delivered digest, so a skipped or late run loses nothing and a second run
-        // the same day repeats nothing. The first digest for a profile lists everything current.
-        const last = await repo.lastDigestAt(p.tenantId, p.id);
-        // RADAR_DIGEST_REPLAY_UNTIL (ISO time) re-sends the full current list on runs before that time, for
-        // previewing a template change. It expires on its own, so a forgotten setting cannot spam anyone.
-        const replay = (process.env.RADAR_DIGEST_REPLAY_UNTIL ?? "") > now;
-        const since = replay ? "1970-01-01T00:00:00.000Z" : (last ?? "1970-01-01T00:00:00.000Z");
-        if (replay)
-          log({ event: "digest_replay", profile: p.id, until: process.env.RADAR_DIGEST_REPLAY_UNTIL });
-        const d = await buildDigest(repo, p.tenantId, p.id, {
-          since,
-          now,
-          federalMinScore: Number(process.env.RADAR_FEDERAL_MIN_SCORE ?? FEDERAL_MIN_SCORE),
-        });
-        if (values.signals !== "off") {
-          // FEMA signals are a bonus; a failure here never blocks the digest.
-          const signalsSince = last ?? new Date(Date.now() - 30 * 86_400_000).toISOString();
-          d.signals = await signalsFor(p.states, signalsSince).catch((err: Error) => {
-            log({ event: "signals_failed", profile: p.id, error: err.message });
-            return [];
-          });
-        }
-        if (summarizer) {
-          // The brief is a bonus too: on any failure the email goes out without it.
-          d.summary = await summarizer.summarize(d).catch((err: Error) => {
-            log({ event: "summary_failed", profile: p.id, error: err.message });
-            return null;
-          });
-        }
-        // Never send without a brief: fall back to one written straight from the digest's own facts.
-        if (!d.summary) {
-          d.summary = fallbackSummary(d);
-          if (summarizer) log({ event: "summary_fallback", profile: p.id });
-        }
-        const stem = `${dir}/${p.tenantId}-${p.id}-${now.slice(0, 10)}`;
-        const html = renderDigestHtml(d);
-        const text = renderDigestText(d);
-        // Local copies are a convenience; a disk problem must never stop the email.
-        try {
-          await writeFile(`${stem}.md`, renderDigestMarkdown(d));
-          await writeFile(`${stem}.txt`, text);
-          await writeFile(`${stem}.html`, html);
-        } catch (err) {
-          log({ event: "digest_files_failed", profile: p.id, error: (err as Error).message });
-        }
-        let emailed = false;
-        const to = testTo ? [testTo] : recipientsFor(recipientOverrides, p.tenantId, p.id, p.delivery.email);
-        if (mailer && to.length > 0) {
-          const subject = `${testTo ? "[TEST] " : ""}${digestSubject(p.name, d.newMatches.length, d.closingSoon.length, now)}`;
-          try {
-            if (feedback) {
-              // Yes/No links are signed per recipient, so each person gets their own copy.
-              for (const r of to) {
-                const opts = {
-                  feedback: (opportunityId: string, vote?: FeedbackVote) =>
-                    feedbackUrl(
-                      feedback.baseUrl,
-                      signFeedbackToken(
-                        { t: p.tenantId, p: p.id, o: opportunityId, r },
-                        feedback.secret,
-                        now,
-                      ),
-                      vote,
-                    ),
-                };
-                await mailer.send({
-                  to: [r],
-                  subject,
-                  html: renderDigestHtml(d, opts),
-                  text: renderDigestText(d, 5, opts),
-                  unsubscribe,
-                });
-              }
-            } else await mailer.send({ to, subject, html, text, unsubscribe });
-            emailed = true;
-          } catch (err) {
-            // Not recorded as delivered, so tomorrow's digest still includes today's new items.
-            log({ event: "email_failed", profile: p.id, error: (err as Error).message });
-            continue;
-          }
-        }
-        if (!testTo) await repo.recordDigest(p.tenantId, p.id, now);
-        log({
-          event: "digest",
-          profile: p.id,
-          new: d.newMatches.length,
-          closing: d.closingSoon.length,
-          secondLook: d.secondLook.length,
-          signals: d.signals?.length ?? 0,
-          emailed,
-          test: Boolean(testTo),
-        });
-      }
+      await withWorkerLock(repo, () => daily(repo, values, sources, max));
     } else {
       process.stderr.write("Usage: radar <profile load|ingest|import|score|digest|daily> [options]\n");
       process.exitCode = 2;

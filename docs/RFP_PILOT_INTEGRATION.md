@@ -49,7 +49,8 @@ Full schema: `GET /openapi.json`.
 ```
 
 RFP Pilot should: create the solicitation from `solicitation`; fetch each document from its public URL and keep
-`originalFilename` exactly (base solicitation and addenda stay separate files); store `radarOpportunityId` so
+`originalFilename` exactly (base solicitation and addenda stay separate files). Radar only hands over public
+http(s) links, but the downloader should still refuse an address that resolves to a private range. Store `radarOpportunityId` so
 later addenda detected by Radar (content hash changes) can be pushed to the same workspace.
 
 Compatibility: fields are only added within 1.x. A breaking change becomes 2.0 and both versions are served

@@ -86,6 +86,17 @@ describe("Radar API", () => {
     expect((await app.inject({ url: "/healthz" })).statusCode).toBe(200);
   });
 
+  it("reports unhealthy when the database cannot be reached", async () => {
+    const down = new MemoryRepository();
+    down.ping = async () => {
+      throw new Error("connection refused");
+    };
+    const sick = buildApp({ repo: down, auth: ApiKeyAuth.fromEnv("isf:isf-key-0123456789abcdef") });
+    const r = await sick.inject({ url: "/healthz" });
+    expect(r.statusCode).toBe(503);
+    expect(r.json()).toEqual({ ok: false, error: "database_unreachable" });
+  });
+
   it("validates input and returns 400 with issues", async () => {
     const r = await app.inject({
       method: "PUT",

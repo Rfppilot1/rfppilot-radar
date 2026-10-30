@@ -217,7 +217,15 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     return reply.code(500).send({ error: "internal_error" });
   });
 
-  app.get("/healthz", async () => ({ ok: true }));
+  // Reports unhealthy when the database is unreachable, so the platform restarts or flags the service.
+  app.get("/healthz", async (_req, reply) => {
+    try {
+      await deps.repo.ping();
+      return { ok: true };
+    } catch {
+      return reply.code(503).send({ ok: false, error: "database_unreachable" });
+    }
+  });
   if (deps.feedbackSecret) registerFeedbackRoutes(app, deps.repo, deps.feedbackSecret, now);
   app.get("/openapi.json", async () => openApiDocument());
 
@@ -302,7 +310,7 @@ function registerTenantRoutes(app: FastifyInstance, repo: Repository, now: () =>
     const matches = await repo.listMatches(tenantId, profileId, {
       bands: ["strong", "possible", "weak"],
       activeAt: at,
-      limit: 5000,
+      limit: "all",
     });
     const decisions = await repo.listDecisions(tenantId, profileId);
     const opps = await repo.getOpportunities(matches.map((m) => m.opportunityId));

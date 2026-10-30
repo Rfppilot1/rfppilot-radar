@@ -98,13 +98,14 @@ export async function rescoreProfile(
     states: profile.states,
     openOnly: true,
     dueAfter: now,
-    limit: 10_000,
+    // Every open notice in the profile's geography: a cap here would silently leave the latest-due unscored.
+    limit: "all",
   });
   const previous = new Map(
     (
       await repo.listMatches(profile.tenantId, profile.id, {
         bands: ["strong", "possible", "weak", "excluded"],
-        limit: 100_000,
+        limit: "all",
       })
     ).map((m) => [m.opportunityId, m] as const),
   );
@@ -167,7 +168,7 @@ export async function buildDigest(
   const matches = await repo.listMatches(tenantId, profileId, {
     bands: ["strong", "possible", "weak", "excluded"],
     activeAt: o.now,
-    limit: 5000,
+    limit: "all",
   });
   const decisions = await repo.listDecisions(tenantId, profileId);
   const decided = new Map(decisions.map((d) => [d.opportunityId, d]));
@@ -215,7 +216,7 @@ export async function buildDigest(
     ? (
         await repo.listMatches(tenantId, profileId, {
           bands: ["strong", "possible", "weak", "excluded"],
-          limit: 100_000,
+          limit: "all",
         })
       ).filter(
         (m) =>

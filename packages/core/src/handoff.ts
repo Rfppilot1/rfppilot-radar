@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Match, Opportunity } from "./schema.js";
+import { isPublicUrl } from "./urls.js";
 
 /**
  * The contract for "Send to RFP Pilot": what Radar hands RFP Pilot to open a solicitation workspace.
@@ -67,11 +68,14 @@ export function toHandoff(opp: Opportunity, match: Match, tenantId: string): Rfp
       contact: opp.contact,
       sourceUrl: opp.provenance.sourceUrl,
     },
-    documents: opp.documents.map((d) => ({
-      originalFilename: d.filename,
-      url: d.url,
-      description: d.description,
-    })),
+    // Only public http(s) links leave Radar: RFP Pilot's server fetches these.
+    documents: opp.documents
+      .filter((d) => isPublicUrl(d.url))
+      .map((d) => ({
+        originalFilename: d.filename,
+        url: d.url,
+        description: d.description,
+      })),
     fit: {
       score: match.score,
       band: match.band,
