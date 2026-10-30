@@ -42,22 +42,27 @@ export default async function Market({
             Where the open bids that fit {profile.name} are, and when they close.
           </p>
         </div>
-        <form method="get" action={PATH} className="flex items-center gap-2 text-sm">
-          {view.tab !== "all" && <input type="hidden" name="tab" value={view.tab} />}
-          <label htmlFor="fit" className="text-muted">
-            Fit
-          </label>
-          <select
-            id="fit"
-            name="fit"
-            defaultValue={view.fit}
-            className="rounded-md border border-line bg-card px-2 py-1"
-          >
-            <option value="all">Strong and possible</option>
-            <option value="strong">Strong only</option>
-          </select>
-          <button className="rounded-md bg-brand px-3 py-1 font-semibold text-white">Apply</button>
-        </form>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <Link href={opp({})} className="text-sm font-semibold text-brand hover:underline">
+            See the opportunities →
+          </Link>
+          <form method="get" action={PATH} className="flex items-center gap-2 text-sm">
+            {view.tab !== "all" && <input type="hidden" name="tab" value={view.tab} />}
+            <label htmlFor="fit" className="text-muted">
+              Fit
+            </label>
+            <select
+              id="fit"
+              name="fit"
+              defaultValue={view.fit}
+              className="rounded-md border border-line bg-card px-2 py-1"
+            >
+              <option value="all">Strong and possible</option>
+              <option value="strong">Strong only</option>
+            </select>
+            <button className="rounded-md bg-brand px-3 py-1 font-semibold text-white">Apply</button>
+          </form>
+        </div>
       </div>
 
       <Tabs tabs={tabs} active={view.tab} hrefFor={(tab) => viewHref(PATH, view, { tab })} />
