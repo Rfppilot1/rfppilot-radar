@@ -47,7 +47,7 @@ import {
   type ProfileResult,
   type SourceResult,
 } from "./daily.js";
-import { ResendMailer, parseRecipients, type Mailer } from "./mailer.js";
+import { ResendMailer, parseRecipients, withSubjectPrefix, type Mailer } from "./mailer.js";
 import { recentSignals } from "./signals.js";
 
 /**
@@ -271,7 +271,10 @@ async function daily(
   const now = new Date().toISOString();
   const mailer: Mailer | null =
     process.env.RESEND_API_KEY && process.env.RADAR_EMAIL_FROM
-      ? new ResendMailer(process.env.RESEND_API_KEY, process.env.RADAR_EMAIL_FROM)
+      ? withSubjectPrefix(
+          new ResendMailer(process.env.RESEND_API_KEY, process.env.RADAR_EMAIL_FROM),
+          process.env.RADAR_SUBJECT_PREFIX,
+        )
       : null;
   // Test send: RADAR_TEST_RECIPIENT gets the email instead of the real recipients, the subject is marked
   // [TEST], and nothing is recorded as delivered, so the real recipients' next email is unchanged.

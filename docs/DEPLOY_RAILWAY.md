@@ -80,3 +80,10 @@ A third service, `radar-web`, runs the website in `apps/web`.
 2. Variables: `RADAR_API_URL` (the staging API's URL), `RADAR_API_KEY`, `RADAR_PROFILE_ID=isf-main`,
    `WEB_PASSWORD`. On the staging API, add the same key to `RADAR_API_KEYS` as `isf:<key>`.
 3. Generate a public domain. Share the URL and password only with people testing.
+
+## Staging daily run (operator email only)
+
+The staging worker runs on its own schedule, `15 11 * * 1-5` (7:15 AM Eastern in daylight time), 30 minutes
+after production so the two never hit the sources at the same moment. It loads bids and emails only the
+addresses in its own `RADAR_RECIPIENTS` (today `isf/isf-main=ben@rfppilot.com`). Every subject starts with
+`[STAGING]` (`RADAR_SUBJECT_PREFIX`). To add a reader, append the address to that variable.
