@@ -265,3 +265,18 @@ describe("today in brief", () => {
     expect(html.indexOf("TODAY IN BRIEF")).toBeLessThan(html.indexOf("Nothing new"));
   });
 });
+
+describe("withSubjectPrefix", () => {
+  it("marks subjects for a non-production environment and leaves everything else alone", async () => {
+    const { withSubjectPrefix } = await import("../src/mailer.js");
+    const seen: { subject: string; idempotencyKey?: string }[] = [];
+    const base = {
+      send: async (m: { subject: string; idempotencyKey?: string }) => (seen.push(m), { id: "1" }),
+    };
+    const mail = { to: ["a@b.co"], subject: "Radar: 3 new", text: "t", html: "h", idempotencyKey: "k1" };
+    await withSubjectPrefix(base as never, "[STAGING]").send(mail);
+    expect(seen[0]).toMatchObject({ subject: "[STAGING] Radar: 3 new", idempotencyKey: "k1" });
+    expect(withSubjectPrefix(base as never, "  ")).toBe(base);
+    expect(withSubjectPrefix(base as never, undefined)).toBe(base);
+  });
+});
