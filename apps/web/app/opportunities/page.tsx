@@ -11,7 +11,7 @@ import {
   viewHref,
   type View,
 } from "@/lib/filters";
-import { daysLeft, KIND_LABEL, money, shortDate } from "@/lib/format";
+import { daysLeft, KIND_LABEL, money, shortDate, statedValue } from "@/lib/format";
 import { loadRadar } from "@/lib/load";
 import { API_PAGE_LIMIT } from "@/lib/radar";
 
@@ -136,7 +136,7 @@ export default async function Opportunities({
                           {left !== null && ` (${left} ${left === 1 ? "day" : "days"})`}
                         </span>
                         <span>{KIND_LABEL[o.kind] ?? o.kind}</span>
-                        {o.estimatedValue && <span>{money(o.estimatedValue.amount)}</span>}
+                        {statedValue(o.estimatedValue) && <span>{money(o.estimatedValue!.amount)}</span>}
                         {o.hasAddendum && <span>Addendum posted</span>}
                         {answer === "watch" && (
                           <span className="font-semibold text-strong">You said yes</span>

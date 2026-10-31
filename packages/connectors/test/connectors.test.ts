@@ -118,6 +118,9 @@ describe("Texas ESBD", () => {
     expect(o.hasAddendum).toBe(true);
     expect(o.contact?.email).toBe("pat.buyer@example.gov");
     expect(o.estimatedValue).toEqual({ amount: 1250000, basis: "agency_estimate", text: null });
+    // A placeholder value ("1.00", as some agencies enter) is not a $1 contract.
+    const placeholder = normalizeTxEsbd(lines[0], AT, { ...detail, value: "1.00", description: null });
+    expect(placeholder.estimatedValue).toBeNull();
     expect(o.keyDates.map((k) => [k.kind, k.date, k.time, k.mandatory])).toEqual([
       ["pre_bid", "2026-10-29", "10:00 AM", true],
       ["questions_due", "2026-11-05", null, null],
@@ -163,6 +166,17 @@ describe("Florida MFMP", () => {
     expect(o.buyer.name).toBe("Florida Department of Transportation (FDOT)");
     expect(o.dueAt).toBe("2026-10-15T21:00:00.000Z");
     expect(o.provenance.sourceUrl).toBe("https://vendor.myfloridamarketplace.com/search/bids/detail/17068");
+  });
+
+  it("labels cities, counties and school districts that post on MFMP as local buyers, not state", () => {
+    const [raw] = fx("fl-mfmp.2026-10-15.verbatim.json");
+    const as = (name: string) =>
+      normalizeFlAd({ ...raw, organization: { ...raw.organization, name } }, AT).buyer.level;
+    expect(as("Town of Orange Park")).toBe("local");
+    expect(as("Clay County Board of County Commissioners")).toBe("local");
+    expect(as("School District of Palm Beach County")).toBe("local");
+    expect(as("Florida Department of Transportation (FDOT)")).toBe("state");
+    expect(as("Florida Division of Emergency Management")).toBe("state");
   });
 
   it("maps ITN, marks later versions as addenda, and ignores the per-user favorite flag in the hash", () => {
@@ -217,6 +231,9 @@ describe("SAM.gov", () => {
       });
     const run = await mk('{"error":{"code":"404","message":"No Data found"}}').fetch();
     expect(run.opportunities).toHaveLength(0);
+    // A posted-date window never sees every open notice: never complete, and marked windowed so health checks
+    // don't read that as a problem.
+    expect(run).toMatchObject({ complete: false, windowed: true });
     const seen: { state: string; body: string }[] = [];
     await new SamGovConnector({
       http: new HttpClient({

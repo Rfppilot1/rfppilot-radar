@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased: Fixes from the Oct 30 test batch
+
+- **Florida documents open.** MyFloridaMarketPlace returns an attachment only when the request asks for a file; a plain link opened the portal's web app. The web app now links Florida documents through `/docs/mfmp/<attachmentId>`, which asks MFMP for the file and passes it through (numeric ids only, MFMP's download address only, behind the staging password, unexpected types served as downloads).
+- **No more "$0" or "$1" contracts.** Agencies fill required value fields with placeholders ($0.01, $1.00). Agency estimates under $1,000 now count as not stated (`parseEstimate`, `MIN_CONTRACT_VALUE`), so they no longer show on cards or inflate Market totals. Texas detail version 3 re-reads stored postings once; the web app also hides placeholders on notices stored before this change.
+- **Local buyers on MFMP are local.** Cities, towns, counties, school districts, local authorities and county officers that post on MFMP (e.g. Town of Orange Park) were labelled statewide. They are now `local` and placed in their county (Orange Park and Green Cove Springs added to Clay County). Florida parse version 3 re-stores records once.
+- **SAM.gov no longer looks broken.** SAM is queried by posted-date window, so its runs are never `complete` by design. Runs now say `windowed: true`, and the health check judges SAM by its last error-free run (`lastSuccessfulRunAt`) instead of its last complete run.
+
 ## Unreleased: Reliable daily run
 
 - **One failure no longer stops the run.** Each profile is scored and emailed on its own: a failing profile is reported and every other customer still gets their email. The run exits non-zero when any customer-facing step failed, so the scheduler shows it.

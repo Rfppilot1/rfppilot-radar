@@ -234,6 +234,11 @@ export class MemoryRepository implements Repository {
     return done.sort().at(-1) ?? null;
   }
 
+  async lastSuccessfulRunAt(source: string) {
+    const ok = this.runs.filter((r) => r.source === source && !r.error).map((r) => r.finishedAt);
+    return ok.sort().at(-1) ?? null;
+  }
+
   async tryRunLock(name: string): Promise<RunLock | null> {
     if (this.locks.has(name)) return null;
     this.locks.add(name);

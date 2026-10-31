@@ -2,7 +2,8 @@ import Link from "next/link";
 import { decide } from "@/app/opportunities/actions";
 import type { MatchItem } from "@/lib/radar";
 import { FitBadge } from "./FitBadge";
-import { dateTime, daysLeft, money, safeHref, shortDate } from "@/lib/format";
+import { documentHref } from "@/lib/docs";
+import { dateTime, daysLeft, money, safeHref, shortDate, statedValue } from "@/lib/format";
 
 const KEY_DATE: Record<string, string> = {
   pre_bid: "Pre-bid meeting",
@@ -28,6 +29,7 @@ export function Detail({
   const left = daysLeft(o.dueAt, now);
   const reasons = [...item.match.reasons].sort((a, b) => Math.abs(b.points) - Math.abs(a.points)).slice(0, 6);
   const source = safeHref(o.provenance.sourceUrl);
+  const value = statedValue(o.estimatedValue);
 
   return (
     <article className="rounded-lg border border-line bg-card shadow-sm">
@@ -66,12 +68,10 @@ export function Detail({
         </div>
         <div className="bg-card p-3">
           <dt className="text-xs font-semibold text-muted">Stated value</dt>
-          <dd className="mt-0.5 font-semibold">
-            {o.estimatedValue ? money(o.estimatedValue.amount) : "Not stated"}
-          </dd>
-          {o.estimatedValue && (
+          <dd className="mt-0.5 font-semibold">{value ? money(value.amount) : "Not stated"}</dd>
+          {value && (
             <dd className="text-xs text-muted">
-              {o.estimatedValue.basis === "agency_estimate" ? "Agency estimate" : "From the posting text"}
+              {value.basis === "agency_estimate" ? "Agency estimate" : "From the posting text"}
             </dd>
           )}
         </div>
@@ -123,7 +123,7 @@ export function Detail({
             </h3>
             <ul className="mt-2 space-y-1 text-sm">
               {o.documents.slice(0, 8).map((d, i) => {
-                const href = safeHref(d.url);
+                const href = documentHref(d.url);
                 const label = d.filename ?? d.description ?? "Document";
                 return (
                   <li key={i} className="truncate">

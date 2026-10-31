@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { placeBuyer, type County } from "../lib/counties";
+import { documentHref, mfmpAttachmentId, safeFilename } from "../lib/docs";
+import { statedValue } from "../lib/format";
 import { applyView, parseView, tabCounts, viewHref, type FilterContext } from "../lib/filters";
 import { countiesOf, stateMap } from "../lib/geo";
 import { localDay, marketStats, shadeStep } from "../lib/market";
@@ -84,6 +86,7 @@ describe("placing a buyer on a county", () => {
     ["JEA", "Duval"],
     ["Saint Johns County", "St. Johns"],
     ["City of Port St. Lucie", "St. Lucie"],
+    ["Town of Orange Park", "Clay"],
   ])("%s is in %s County, FL", (buyer, county) => {
     const p = place(FL, buyer);
     expect(p.kind).toBe("county");
@@ -179,6 +182,46 @@ describe("filters", () => {
       "a",
       "c",
     ]);
+  });
+});
+
+describe("document links", () => {
+  const mfmp =
+    "https://vendor.myfloridamarketplace.com/mfmp/bids/detail/attachment/download?attachmentId=48213";
+
+  it("sends MFMP attachments through Radar's download route and leaves other links alone", () => {
+    expect(mfmpAttachmentId(mfmp)).toBe("48213");
+    expect(documentHref(mfmp)).toBe("/docs/mfmp/48213");
+    const esbd = "https://www.txsmartbuy.gov/core/media/media.nl?id=1&c=2&h=3";
+    expect(documentHref(esbd)).toBe(esbd);
+    expect(documentHref("javascript:alert(1)")).toBeNull();
+    expect(documentHref(null)).toBeNull();
+  });
+
+  it("accepts only numeric ids on the real MFMP download address", () => {
+    expect(mfmpAttachmentId(mfmp.replace("48213", "48213&x=1"))).toBe("48213");
+    expect(mfmpAttachmentId(mfmp.replace("48213", "../etc"))).toBeNull();
+    expect(mfmpAttachmentId(mfmp.replace("vendor.myfloridamarketplace.com", "evil.example"))).toBeNull();
+    expect(mfmpAttachmentId("https://vendor.myfloridamarketplace.com/other?attachmentId=1")).toBeNull();
+  });
+
+  it("keeps the portal's file name but strips paths and quotes", () => {
+    expect(safeFilename('attachment; filename="RFP ECD - Revised Services_FINAL 10-29-2026.pdf"')).toBe(
+      "RFP ECD - Revised Services_FINAL 10-29-2026.pdf",
+    );
+    expect(safeFilename("attachment; filename*=UTF-8''Addendum%201.pdf")).toBe("Addendum 1.pdf");
+    expect(safeFilename('attachment; filename="..\\..\\boot.ini"')).toBe("boot.ini");
+    expect(safeFilename(null)).toBeNull();
+    expect(safeFilename('attachment; filename=".."')).toBeNull();
+  });
+});
+
+describe("stated values", () => {
+  it("hides placeholder values agencies enter in required fields", () => {
+    expect(statedValue({ amount: 0.01, basis: "agency_estimate", text: null })).toBeNull();
+    expect(statedValue({ amount: 1, basis: "agency_estimate", text: null })).toBeNull();
+    expect(statedValue({ amount: 59_500, basis: "agency_estimate", text: null })?.amount).toBe(59_500);
+    expect(statedValue(null)).toBeNull();
   });
 });
 
