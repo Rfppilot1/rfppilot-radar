@@ -14,6 +14,7 @@ import {
   OpenFemaPaCollector,
   UsaspendingCollector,
   UsaspendingDetailCollector,
+  SamAwardsCollector,
   TX_DETAIL_VERSION,
   normalizeFlAd,
   normalizeSam,
@@ -68,7 +69,7 @@ import { recentSignals } from "./signals.js";
  *   radar daily [--out-dir data/digests] [--profiles a.json,b.json] [--imports src=file.json,...] [--sources none]
  *                                                  ingest + score + one digest per profile
  *                                                  (+ market collection when RADAR_MARKET_COLLECT=1)
- *   radar market [--market-sources usaspending,usaspending-detail,openfema-pa] [--since ISO]
+ *   radar market [--market-sources usaspending,usaspending-detail,sam-awards,openfema-pa] [--since ISO]
  *                                                  collect public award data for Flight Deck
  */
 const USER_AGENT = process.env.RADAR_USER_AGENT ?? "RFPPilotRadar/0.1 (+https://rfppilot.com)";
@@ -136,7 +137,26 @@ function marketJobs(sources: string[]): MarketJob[] {
         }),
       );
     else if (s === "usaspending-detail") jobs.push(new UsaspendingDetailCollector({ http }));
-    else if (s === "openfema-pa") jobs.push(new OpenFemaPaCollector({ http, states }));
+    else if (s === "sam-awards") {
+      if (!process.env.SAM_API_KEY) {
+        log({ event: "market_skipped", source: s, reason: "SAM_API_KEY is not set" });
+        continue;
+      }
+      jobs.push(
+        new SamAwardsCollector({
+          http,
+          apiKey: process.env.SAM_API_KEY,
+          states,
+          naics: (process.env.RADAR_MARKET_NAICS ?? DEFAULT_MARKET_NAICS.join(","))
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean),
+          // The key's daily quota is shared with the opportunity pull and anything else using it: 10 a day for a
+          // personal key without a SAM.gov role, 1,000 with one. Raise this only if the key has a role.
+          maxRequests: Number(process.env.RADAR_SAM_AWARDS_MAX_REQUESTS ?? 2),
+        }),
+      );
+    } else if (s === "openfema-pa") jobs.push(new OpenFemaPaCollector({ http, states }));
     else throw new Error(`Unknown market source: ${s}`);
   }
   return jobs;
@@ -150,6 +170,11 @@ async function market(store: MarketStore, sources: string[], since?: string): Pr
     log,
     now: new Date().toISOString(),
     backfillSince: MARKET_SINCE,
+    // SAM.gov's request budget is tiny, and USAspending already carries the history: start SAM 14 days back.
+    backfillSinceFor: {
+      "sam-awards":
+        process.env.RADAR_SAM_AWARDS_SINCE ?? new Date(Date.now() - 14 * 86_400_000).toISOString(),
+    },
     since,
     // Award detail requests per run (one request each). The backlog after the first backfill clears over a few runs.
     detailMax: Number(process.env.RADAR_MARKET_DETAIL_MAX ?? 1000),
@@ -409,7 +434,9 @@ async function daily(
     process.env.RADAR_MARKET_COLLECT === "1"
       ? await market(
           marketStore,
-          (process.env.RADAR_MARKET_SOURCES ?? "usaspending,usaspending-detail,openfema-pa").split(","),
+          (process.env.RADAR_MARKET_SOURCES ?? "usaspending,usaspending-detail,sam-awards,openfema-pa").split(
+            ",",
+          ),
         )
       : [];
 
@@ -492,7 +519,7 @@ async function main() {
       await withWorkerLock(repo, async () => {
         const results = await market(
           marketStore,
-          (values["market-sources"] ?? "usaspending,usaspending-detail,openfema-pa").split(","),
+          (values["market-sources"] ?? "usaspending,usaspending-detail,sam-awards,openfema-pa").split(","),
           values.since,
         );
         if (results.some((r) => !r.ok)) process.exitCode = 1;

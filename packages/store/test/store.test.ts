@@ -572,6 +572,7 @@ describe("postgres transactions", () => {
       "003_deliveries.sql",
       "004_market.sql",
       "005_market_award_detail.sql",
+      "006_market_cursor.sql",
     ]);
     expect(await migrate(db as never)).toEqual([]);
   });

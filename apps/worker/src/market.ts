@@ -1,4 +1,11 @@
-import type { FederalAward, FederalAwardDetail, MarketRun, MarketSourceId, MarketWindow } from "@radar/core";
+import type {
+  FederalAction,
+  FederalAward,
+  FederalAwardDetail,
+  MarketRun,
+  MarketSourceId,
+  MarketWindow,
+} from "@radar/core";
 import type { PaRecords } from "@radar/connectors";
 import { HttpError } from "@radar/connectors";
 import type { MarketStore } from "@radar/store";
@@ -8,8 +15,10 @@ type Log = (e: Record<string, unknown>) => void;
 /** A market collector, as the job sees it: fetch a window, get records and raw captures back. */
 export type MarketJob =
   | {
-      id: "usaspending" | "openfema-pa";
-      fetch(window: MarketWindow): Promise<MarketRun<FederalAward> | MarketRun<PaRecords>>;
+      id: "usaspending" | "openfema-pa" | "sam-awards";
+      fetch(
+        window: MarketWindow,
+      ): Promise<MarketRun<FederalAward> | MarketRun<PaRecords> | MarketRun<FederalAction>>;
     }
   | { id: "usaspending-detail"; fetchFor(keys: string[]): Promise<MarketRun<FederalAwardDetail>> };
 
@@ -21,6 +30,8 @@ export interface MarketResult {
   updated: number;
   rejected: number;
   complete: boolean;
+  /** Stopped early on purpose (request budget, rate limit); the next run resumes. Not a problem. */
+  resuming?: boolean;
   window: { since: string; until: string } | null;
   error: string | null;
 }
@@ -38,7 +49,15 @@ export const MARKET_STALE_AFTER_MS = 4 * 86_400_000;
 export async function collectMarket(
   store: MarketStore,
   jobs: MarketJob[],
-  o: { log: Log; now: string; backfillSince: string; since?: string; detailMax?: number },
+  o: {
+    log: Log;
+    now: string;
+    backfillSince: string;
+    /** Per-source first-run start, e.g. a short one for a source with a tight request budget. */
+    backfillSinceFor?: Partial<Record<MarketSourceId, string>>;
+    since?: string;
+    detailMax?: number;
+  },
 ): Promise<MarketResult[]> {
   const out: MarketResult[] = [];
   for (const job of jobs) {
@@ -84,13 +103,17 @@ export async function collectMarket(
         o.log({ event: "market", ...res, requested: keys.length, notes: run.notes });
         continue;
       }
+      // A run that stopped early (request budget, rate limit) left a cursor: finish that window first.
+      const cursor = o.since ? null : await store.lastMarketCursor(job.id);
       const last = await store.lastMarketWindowEnd(job.id);
       const since =
         o.since ??
-        (last ? new Date(Date.parse(last) - OVERLAP_DAYS * 86_400_000).toISOString() : o.backfillSince);
-      window = { since, until: o.now };
-      o.log({ event: "market_start", source: job.id, ...window });
-      const run = await job.fetch(window);
+        (last
+          ? new Date(Date.parse(last) - OVERLAP_DAYS * 86_400_000).toISOString()
+          : (o.backfillSinceFor?.[job.id] ?? o.backfillSince));
+      window = cursor ? { since: cursor.since, until: cursor.until } : { since, until: o.now };
+      o.log({ event: "market_start", source: job.id, ...window, offset: cursor?.offset ?? 0 });
+      const run = await job.fetch(cursor ? { ...window, offset: cursor.offset } : window);
       const ids = await store.saveCaptures(run.captures);
       let fetched = 0;
       let inserted = 0;
@@ -99,6 +122,10 @@ export async function collectMarket(
         const awards = run.records as FederalAward[];
         fetched = awards.length;
         ({ inserted, updated } = await store.upsertFederalAwards(awards, ids, o.now));
+      } else if (job.id === "sam-awards") {
+        const actions = run.records as FederalAction[];
+        fetched = actions.length;
+        ({ inserted, updated } = await store.upsertFederalActions(actions, ids, o.now));
       } else {
         for (const r of run.records as PaRecords[]) {
           fetched += r.projects.length + r.applicants.length;
@@ -122,6 +149,7 @@ export async function collectMarket(
         complete: run.complete,
         notes: run.notes,
         error: null,
+        cursor: run.cursor ?? null,
       });
       const res: MarketResult = {
         source: job.id,
@@ -131,6 +159,7 @@ export async function collectMarket(
         updated,
         rejected: run.rejected.length,
         complete: run.complete,
+        resuming: Boolean(run.cursor),
         window,
         error: null,
       };
@@ -190,7 +219,7 @@ export async function marketProblems(
     if (!r.ok) problems.push(`market ${r.source}: failed (${r.error})`);
     else if (r.rejected >= 5 && r.rejected > (r.fetched + r.rejected) * 0.25)
       problems.push(`market ${r.source}: ${r.rejected} records could not be read`);
-    if (r.ok && !r.complete)
+    if (r.ok && !r.complete && !r.resuming)
       problems.push(`market ${r.source}: some records were not read (see the run notes)`);
     const last = await store.lastMarketSuccessAt(r.source).catch(() => null);
     if (last && Date.parse(now) - Date.parse(last) > MARKET_STALE_AFTER_MS)

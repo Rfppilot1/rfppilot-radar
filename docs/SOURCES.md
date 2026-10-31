@@ -133,6 +133,17 @@ no logins, identified and paced requests.
 | Pace        | One request per award that is new or changed since its details were read; capped per run (`RADAR_MARKET_DETAIL_MAX`, default 1,000)                                    |
 | Why not SAM | The SAM.gov Contract Awards API has the same FPDS fields but allows a personal key 10 requests a day, shared with every other SAM call on that key                     |
 
+## sam-awards
+
+|        |                                                                                                                                                                                                                                                                                                                                                                        |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner  | GSA (SAM.gov Contract Awards API, the FPDS replacement since 2026)                                                                                                                                                                                                                                                                                                     |
+| Access | `GET https://api.sam.gov/contract-awards/v1/search`, SAM.gov public API key (`SAM_API_KEY`, same as the opportunity connector; personal keys expire every 90 days)                                                                                                                                                                                                     |
+| Basis  | Official API                                                                                                                                                                                                                                                                                                                                                           |
+| Scope  | Contract actions (awards and modifications) modified in the window, place of performance in `RADAR_MARKET_STATES`, NAICS in `RADAR_MARKET_NAICS`                                                                                                                                                                                                                       |
+| Budget | The key's daily quota is shared across SAM APIs: 10 requests a day for a personal key without a SAM.gov role, 1,000 with one. Each run makes at most `RADAR_SAM_AWARDS_MAX_REQUESTS` (default 2), stops on 429, and leaves a cursor so the next run resumes the same window. First run starts 14 days back (`RADAR_SAM_AWARDS_SINCE`); USAspending carries the history |
+| Status | Built from GSA's documentation (parameter names, response paths); the first staging run confirms the live shape. Records that don't match are rejected and counted, not guessed                                                                                                                                                                                        |
+
 ## openfema-pa
 
 |             |                                                                                                                                                |
@@ -147,7 +158,6 @@ no logins, identified and paced requests.
 
 ## Planned (not yet collected)
 
-- **SAM.gov Contract Awards**: not needed for now; `usaspending-detail` reads the same FPDS competition fields without SAM's 10-requests-a-day limit.
 - **Texas LBB Contracts Database**: the public site is a Dash app; its "Download Data" export needs to be confirmed as an allowed, stable route first.
 - **Florida FACTS**: public search with spreadsheet export. Its search terms (checked Oct 31, 2026) describe the system and the Chapter 119 route and place no limit on automated use; no robots.txt. Next to build.
 - **TxDOT bid tabulations**, **ESBD awards**, **MFMP Agency Decisions**: see the Flight Deck spec, Section 8.

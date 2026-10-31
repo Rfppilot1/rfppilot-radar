@@ -6,6 +6,9 @@ import {
   UsaspendingCollector,
   UsaspendingDetailCollector,
   normalizeAwardDetail,
+  SamAwardsCollector,
+  normalizeSamAward,
+  samAwardsQuery,
   monthSlices,
   normalizePaApplicant,
   normalizePaProject,
@@ -209,5 +212,111 @@ describe("USAspending award details", () => {
     expect(run.records).toHaveLength(1);
     expect(run.records[0]!.captureIndex).toBe(0);
     expect(run.notes).toEqual(["1 award(s) no longer on USAspending"]);
+  });
+});
+
+describe("SAM.gov contract awards", () => {
+  const page = fx("sam-awards.synthetic.json");
+
+  it("reads the documented response paths", () => {
+    expect(normalizeSamAward(page.awardSummary[0])).toMatchObject({
+      key: "70FA3025C00000012|0|",
+      contractingDepartment: "HOMELAND SECURITY, DEPARTMENT OF",
+      contractingOffice: "FEMA REGION IV",
+      awardeeName: "GULF COAST DEBRIS LLC",
+      awardeeUei: "ZZZZ11112222",
+      naics: "562119",
+      psc: "S205",
+      popState: "FL",
+      actionObligation: 250000,
+      baseAndAllOptions: 4800000,
+      dateSigned: "2025-09-12",
+      ultimateCompletionDate: "2029-09-11",
+      offersReceived: 6,
+      extentCompeted: "A",
+      extentCompetedName: "FULL AND OPEN COMPETITION",
+      solicitationId: "70FA3025R00000003",
+    });
+    expect(() => normalizeSamAward(page.awardSummary[1])).toThrow(/no contractId.piid/);
+  });
+
+  it("writes the query the way GSA documents it and never keeps the key in captures", async () => {
+    expect(
+      samAwardsQuery({ lastModifiedDate: "[10/28/2026,10/31/2026]", placeOfPerformStateCode: "FL~TX" }),
+    ).toBe("lastModifiedDate=[10/28/2026,10/31/2026]&placeOfPerformStateCode=FL~TX");
+    const urls: string[] = [];
+    const run = await new SamAwardsCollector({
+      http: http(async (u) => {
+        urls.push(u);
+        return new Response(JSON.stringify(page));
+      }),
+      apiKey: "secret-key",
+      states: ["FL", "TX"],
+      naics: ["562119", "541611"],
+      now: () => AT,
+    }).fetch({ since: "2026-10-28T00:00:00Z" });
+    expect(urls[0]).toContain("lastModifiedDate=[10/28/2026,10/31/2026]");
+    expect(urls[0]).toContain("placeOfPerformStateCode=FL~TX");
+    expect(urls[0]).toContain("naicsCode=562119~541611");
+    expect(urls[0]).toContain("offset=0");
+    expect(run.records).toHaveLength(1);
+    expect(run.rejected).toHaveLength(1);
+    expect(JSON.stringify(run.captures)).not.toContain("secret-key");
+    expect(run.complete).toBe(true);
+  });
+
+  it("stays within its request budget and leaves a cursor to resume from", async () => {
+    let n = 0;
+    const full = (start: number) => ({
+      totalRecords: 1000,
+      awardSummary: Array.from({ length: 100 }, (_, i) => ({
+        ...page.awardSummary[0],
+        contractId: { piid: `P${start + i}`, modificationNumber: "0" },
+      })),
+    });
+    const c = new SamAwardsCollector({
+      http: http(async () => new Response(JSON.stringify(full(100 * n++)))),
+      apiKey: "k",
+      states: ["FL"],
+      naics: [],
+      maxRequests: 2,
+      now: () => AT,
+    });
+    const run = await c.fetch({ since: "2026-10-01T00:00:00Z" });
+    expect(n).toBe(2);
+    expect(run.records).toHaveLength(200);
+    expect(run.complete).toBe(false);
+    expect(run.cursor).toEqual({ since: "2026-10-01T00:00:00Z", until: AT, offset: 2 });
+    const next = await c.fetch({ since: "2026-10-01T00:00:00Z", until: AT, offset: 2 });
+    expect(next.cursor?.offset).toBe(4);
+  });
+
+  it("stops on SAM's rate limit with a cursor instead of failing", async () => {
+    const run = await new SamAwardsCollector({
+      http: http(async () => new Response("", { status: 429 })),
+      apiKey: "k",
+      states: ["FL"],
+      naics: [],
+      now: () => AT,
+    }).fetch({ since: "2026-10-01T00:00:00Z" });
+    expect(run.complete).toBe(false);
+    expect(run.cursor?.offset).toBe(0);
+    expect(run.notes[0]).toMatch(/daily request limit/);
+  });
+
+  it("stops paging if offset turns out not to be a page index", async () => {
+    const same = {
+      totalRecords: 1000,
+      awardSummary: Array.from({ length: 100 }, () => page.awardSummary[0]),
+    };
+    const run = await new SamAwardsCollector({
+      http: http(async () => new Response(JSON.stringify(same))),
+      apiKey: "k",
+      states: ["FL"],
+      naics: [],
+      maxRequests: 5,
+      now: () => AT,
+    }).fetch({ since: "2026-10-01T00:00:00Z" });
+    expect(run.notes.at(-1)).toMatch(/repeated earlier records/);
   });
 });

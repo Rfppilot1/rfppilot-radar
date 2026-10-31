@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import type {
+  FederalAction,
   FederalAward,
   FederalAwardDetail,
+  MarketCursor,
   MarketCapture,
   MarketSourceId,
   PaApplicant,
@@ -28,6 +30,7 @@ export interface MarketRunRecord {
   complete: boolean;
   notes: string[];
   error: string | null;
+  cursor?: MarketCursor | null;
 }
 
 export interface MarketUpsert {
@@ -41,6 +44,9 @@ export interface MarketStore {
   upsertFederalAwards(awards: FederalAward[], captureIds: number[], now: string): Promise<MarketUpsert>;
   upsertPaProjects(projects: PaProject[], captureIds: number[], now: string): Promise<MarketUpsert>;
   upsertPaApplicants(applicants: PaApplicant[], now: string): Promise<MarketUpsert>;
+  upsertFederalActions(actions: FederalAction[], captureIds: number[], now: string): Promise<MarketUpsert>;
+  /** The cursor of the source's latest error-free run, when that run stopped early; otherwise null. */
+  lastMarketCursor(source: MarketSourceId): Promise<MarketCursor | null>;
   /**
    * Awards whose details were never read, or were read for an older version of the award, most recently changed
    * first. Awards still running (or ending within a year) come before long-finished ones, since they matter for
@@ -272,6 +278,77 @@ export class PostgresMarketStore implements MarketStore {
     return { inserted, updated };
   }
 
+  async upsertFederalActions(
+    actions: FederalAction[],
+    captureIds: number[],
+    now: string,
+  ): Promise<MarketUpsert> {
+    return this.upsert(
+      "market.federal_actions",
+      "action_key",
+      [
+        "action_key",
+        "piid",
+        "modification_number",
+        "referenced_idv_piid",
+        "contracting_department",
+        "contracting_office",
+        "awardee_name",
+        "awardee_uei",
+        "naics",
+        "psc",
+        "pop_state",
+        "action_obligation",
+        "total_obligation",
+        "base_and_all_options",
+        "date_signed",
+        "current_completion_date",
+        "ultimate_completion_date",
+        "offers_received",
+        "extent_competed",
+        "extent_competed_name",
+        "solicitation_id",
+        "content_hash",
+        "capture_id",
+      ],
+      actions.map((a) => [
+        a.key,
+        a.piid,
+        a.modificationNumber,
+        a.referencedIdvPiid,
+        a.contractingDepartment,
+        a.contractingOffice,
+        a.awardeeName,
+        a.awardeeUei,
+        a.naics,
+        a.psc,
+        a.popState,
+        a.actionObligation,
+        a.totalObligation,
+        a.baseAndAllOptions,
+        a.dateSigned,
+        a.currentCompletionDate,
+        a.ultimateCompletionDate,
+        a.offersReceived,
+        a.extentCompeted,
+        a.extentCompetedName,
+        a.solicitationId,
+        a.contentHash,
+        captureId(captureIds, a.captureIndex),
+      ]),
+      now,
+    );
+  }
+
+  async lastMarketCursor(source: MarketSourceId): Promise<MarketCursor | null> {
+    const r = await this.db.query<{ cursor: unknown }>(
+      `SELECT cursor FROM market.runs WHERE source=$1 AND error IS NULL ORDER BY finished_at DESC, id DESC LIMIT 1`,
+      [source],
+    );
+    const c = r.rows[0]?.cursor;
+    return c ? ((typeof c === "string" ? JSON.parse(c) : c) as MarketCursor) : null;
+  }
+
   async awardsNeedingDetail(limit: number, today: string): Promise<string[]> {
     const r = await this.db.query<{ award_key: string }>(
       `SELECT award_key FROM market.federal_awards
@@ -320,8 +397,8 @@ export class PostgresMarketStore implements MarketStore {
   async recordMarketRun(r: MarketRunRecord): Promise<void> {
     await this.db.query(
       `INSERT INTO market.runs (source, started_at, finished_at, window_since, window_until, fetched, inserted, updated,
-         rejected, captures, complete, notes, error)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+         rejected, captures, complete, notes, error, cursor)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       [
         r.source,
         r.startedAt,
@@ -336,6 +413,7 @@ export class PostgresMarketStore implements MarketStore {
         r.complete,
         JSON.stringify(r.notes),
         r.error,
+        r.cursor ? JSON.stringify(r.cursor) : null,
       ],
     );
   }
@@ -399,6 +477,14 @@ export class MemoryMarketStore implements MarketStore {
   }
   async upsertPaApplicants(a: PaApplicant[], _now?: string) {
     return this.put(this.applicants, a);
+  }
+  readonly actions = new Map<string, FederalAction>();
+  async upsertFederalActions(a: FederalAction[], _captureIds?: number[], _now?: string) {
+    return this.put(this.actions, a);
+  }
+  async lastMarketCursor(source: MarketSourceId) {
+    const last = this.runs.filter((r) => r.source === source && !r.error).at(-1);
+    return last?.cursor ?? null;
   }
   readonly details = new Map<string, FederalAwardDetail & { forHash: string }>();
   async awardsNeedingDetail(limit: number, today: string) {
