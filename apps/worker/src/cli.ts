@@ -11,6 +11,8 @@ import {
   HttpFlTransport,
   SamGovConnector,
   TxEsbdConnector,
+  OpenFemaPaCollector,
+  UsaspendingCollector,
   TX_DETAIL_VERSION,
   normalizeFlAd,
   normalizeSam,
@@ -26,8 +28,11 @@ import {
   type SourceId,
 } from "@radar/core";
 import {
+  MemoryMarketStore,
   MemoryRepository,
+  PostgresMarketStore,
   PostgresRepository,
+  type MarketStore,
   buildDigest,
   FEDERAL_MIN_SCORE,
   ingestRun,
@@ -48,6 +53,7 @@ import {
   type SourceResult,
 } from "./daily.js";
 import { ResendMailer, parseRecipients, withSubjectPrefix, type Mailer } from "./mailer.js";
+import { collectMarket, marketProblems, type MarketJob, type MarketResult } from "./market.js";
 import { recentSignals } from "./signals.js";
 
 /**
@@ -60,23 +66,90 @@ import { recentSignals } from "./signals.js";
  *   radar digest --tenant T --profile P [--since ISO] [--format text|markdown|json] [--out file]
  *   radar daily [--out-dir data/digests] [--profiles a.json,b.json] [--imports src=file.json,...] [--sources none]
  *                                                  ingest + score + one digest per profile
+ *                                                  (+ market collection when RADAR_MARKET_COLLECT=1)
+ *   radar market [--market-sources usaspending,openfema-pa] [--since ISO]
+ *                                                  collect public award data for Flight Deck
  */
 const USER_AGENT = process.env.RADAR_USER_AGENT ?? "RFPPilotRadar/0.1 (+https://rfppilot.com)";
 
-async function openRepo(): Promise<Repository> {
+async function openRepo(): Promise<{ repo: Repository; market: MarketStore }> {
   if (process.env.DATABASE_URL) {
     const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 4 });
     // An idle pooled connection that drops emits "error"; log it instead of crashing the run.
     pool.on("error", (err) => log({ event: "db_connection_error", error: err.message }));
     await migrate(pool);
-    return new PostgresRepository(pool);
+    return { repo: new PostgresRepository(pool), market: new PostgresMarketStore(pool) };
   }
   if (process.env.RADAR_ALLOW_MEMORY !== "1") {
     throw new Error(
       "DATABASE_URL is not set. Set RADAR_ALLOW_MEMORY=1 to run against a throwaway in-memory store.",
     );
   }
-  return new MemoryRepository();
+  return { repo: new MemoryRepository(), market: new MemoryMarketStore() };
+}
+
+/**
+ * NAICS codes pulled from USAspending when RADAR_MARKET_NAICS is not set: the IT/IV&V, consulting and planning
+ * work the pilot profiles bid, plus disaster debris, monitoring and recovery.
+ */
+const DEFAULT_MARKET_NAICS = [
+  "541511",
+  "541512",
+  "541513",
+  "541519",
+  "518210", // IT services, IV&V, hosting
+  "541611",
+  "541618",
+  "541690",
+  "541990",
+  "561110", // management and other consulting, office admin
+  "541320",
+  "541330",
+  "541620", // planning, engineering, environmental consulting
+  "562111",
+  "562119",
+  "562910",
+  "562998",
+  "238910", // debris collection and removal, remediation, site prep
+  "624230",
+  "561990", // emergency relief, other support services
+];
+
+function marketJobs(sources: string[]): MarketJob[] {
+  const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1000, timeoutMs: 90_000 });
+  const states = (process.env.RADAR_MARKET_STATES ?? "FL,TX")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const jobs: MarketJob[] = [];
+  for (const s of sources) {
+    if (s === "usaspending")
+      jobs.push(
+        new UsaspendingCollector({
+          http,
+          states,
+          naics: (process.env.RADAR_MARKET_NAICS ?? DEFAULT_MARKET_NAICS.join(","))
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean),
+        }),
+      );
+    else if (s === "openfema-pa") jobs.push(new OpenFemaPaCollector({ http, states }));
+    else throw new Error(`Unknown market source: ${s}`);
+  }
+  return jobs;
+}
+
+/** First collection starts here (RADAR_MARKET_SINCE), then each run continues from the last. Default: FY2024. */
+const MARKET_SINCE = process.env.RADAR_MARKET_SINCE ?? "2023-10-01T00:00:00.000Z";
+
+async function market(store: MarketStore, sources: string[], since?: string): Promise<MarketResult[]> {
+  return collectMarket(store, marketJobs(sources), {
+    log,
+    now: new Date().toISOString(),
+    backfillSince: MARKET_SINCE,
+    since,
+  });
 }
 
 /** Minutes a single source may run before it is stopped (its fetched records are kept). Default 45. */
@@ -245,6 +318,7 @@ process.on("unhandledRejection", (err) => {
 
 async function daily(
   repo: Repository,
+  marketStore: MarketStore,
   values: { profiles?: string; imports?: string; signals?: string; "out-dir"?: string },
   sources: SourceId[],
   max: number | undefined,
@@ -326,8 +400,17 @@ async function daily(
     },
   });
 
+  // Public award data for Flight Deck, after the customer-facing work so it can never delay a digest.
+  const marketResults =
+    process.env.RADAR_MARKET_COLLECT === "1"
+      ? await market(marketStore, (process.env.RADAR_MARKET_SOURCES ?? "usaspending,openfema-pa").split(","))
+      : [];
+
   // Health check: one email to the operator (RADAR_ALERT_EMAIL) listing anything that went wrong.
-  const problems = await healthProblems(repo, sourceResults, [...scoreResults, ...digestResults], now);
+  const problems = [
+    ...(await healthProblems(repo, sourceResults, [...scoreResults, ...digestResults], now)),
+    ...(await marketProblems(marketStore, marketResults, now)),
+  ];
   await sendAlert({ mailer, to: process.env.RADAR_ALERT_EMAIL?.trim() || null, log, now }, problems);
   // A customer-facing failure (a profile not scored or not emailed) fails the run, so the scheduler shows it.
   if ([...scoreResults, ...digestResults].some((r) => !r.ok)) process.exitCode = 1;
@@ -350,10 +433,11 @@ async function main() {
       profiles: { type: "string" },
       imports: { type: "string" },
       signals: { type: "string" },
+      "market-sources": { type: "string" },
     },
   });
   const [cmd, sub, arg] = positionals;
-  const repo = await openRepo();
+  const { repo, market: marketStore } = await openRepo();
   try {
     const sources = (values.sources ?? "tx-esbd,fl-mfmp,opengov,bonfire,vendorlink,sam-gov").split(
       ",",
@@ -396,9 +480,18 @@ async function main() {
       if (values.out) await writeFile(values.out, out);
       else process.stdout.write(`${out}\n`);
     } else if (cmd === "daily") {
-      await withWorkerLock(repo, () => daily(repo, values, sources, max));
+      await withWorkerLock(repo, () => daily(repo, marketStore, values, sources, max));
+    } else if (cmd === "market") {
+      await withWorkerLock(repo, async () => {
+        const results = await market(
+          marketStore,
+          (values["market-sources"] ?? "usaspending,openfema-pa").split(","),
+          values.since,
+        );
+        if (results.some((r) => !r.ok)) process.exitCode = 1;
+      });
     } else {
-      process.stderr.write("Usage: radar <profile load|ingest|import|score|digest|daily> [options]\n");
+      process.stderr.write("Usage: radar <profile load|ingest|import|score|digest|daily|market> [options]\n");
       process.exitCode = 2;
     }
   } finally {

@@ -44,6 +44,7 @@ password never appears in this repo.
 | `RADAR_ALERT_EMAIL`         |     | ✓      | Operator address for the after-run problem list, e.g. `ben@rfppilot.com`                                               |
 | `RADAR_SOURCE_DEADLINE_MIN` |     | ✓      | Optional. Minutes one source may run before it is stopped (default 45); what it fetched is kept                        |
 | `RADAR_USER_AGENT`          |     | ✓      | `RFPPilotRadar/0.1 (+https://rfppilot.com; ben@rfppilot.com)`                                                          |
+| `RADAR_MARKET_COLLECT`      |     | ✓      | Optional. `1` collects public award data for Flight Deck after the digests (see "Market data" below)                   |
 
 Never paste these values into chat, email, issues or code.
 
@@ -87,3 +88,16 @@ The staging worker runs on its own schedule, `15 11 * * 1-5` (7:15 AM Eastern in
 after production so the two never hit the sources at the same moment. It loads bids and emails only the
 addresses in its own `RADAR_RECIPIENTS` (today `isf/isf-main=ben@rfppilot.com`). Every subject starts with
 `[STAGING]` (`RADAR_SUBJECT_PREFIX`). To add a reader, append the address to that variable.
+
+## Market data (Flight Deck)
+
+The worker can collect public award data (USAspending federal contracts, FEMA Public Assistance) into the `market`
+schema. It runs after the digests, so it never delays an email, and a failure only adds a line to the operator alert.
+
+- Turn it on: set `RADAR_MARKET_COLLECT=1` on the worker. The migration creates the tables on the next start.
+- The first run backfills from `RADAR_MARKET_SINCE` (default `2023-10-01`); it can take 30–60 minutes. Later runs
+  pick up where the last complete run ended, with a 3-day overlap.
+- Optional: `RADAR_MARKET_STATES` (default `FL,TX`), `RADAR_MARKET_NAICS` (default: IT/IV&V, consulting, planning,
+  engineering, debris and recovery codes; see `DEFAULT_MARKET_NAICS` in `apps/worker/src/cli.ts`),
+  `RADAR_MARKET_SOURCES` (default `usaspending,openfema-pa`).
+- To run it once by hand: `node apps/worker/dist/cli.js market` (or `pnpm --filter @radar/worker exec radar market`).
