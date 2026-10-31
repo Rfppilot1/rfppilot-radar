@@ -1,5 +1,6 @@
 import type { County, Placement } from "./counties";
 import type { MatchItem } from "./radar";
+import { statedValue } from "./format";
 
 /** Market-screen numbers for one tab. Pure, so each figure has a unit test with hand-checked answers. */
 export interface MarketStats {
@@ -68,8 +69,9 @@ export function marketStats(
       unplacedBuyers.set(o.buyer.name, (unplacedBuyers.get(o.buyer.name) ?? 0) + 1);
     }
     buyers.set(o.buyer.name, (buyers.get(o.buyer.name) ?? 0) + 1);
-    if (o.estimatedValue) {
-      total += o.estimatedValue.amount;
+    const value = statedValue(o.estimatedValue);
+    if (value) {
+      total += value.amount;
       covered++;
     }
     if (o.dueAt) {

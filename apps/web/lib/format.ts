@@ -12,6 +12,17 @@ export function validZone(tz: string | null | undefined): string | null {
 
 export const TIME_ZONE = validZone(process.env.RADAR_TIME_ZONE) ?? "America/New_York";
 
+/** Mirrors MIN_CONTRACT_VALUE in @radar/core (the web app imports only types from the workspace packages). */
+const MIN_CONTRACT_VALUE = 1000;
+
+/**
+ * A notice's stated value, or null for placeholders under $1,000 ("$0.01", "$1") that agencies put in required
+ * value fields. The connectors drop these too; this also covers notices stored before that change.
+ */
+export function statedValue<T extends { amount: number }>(v: T | null | undefined): T | null {
+  return v && v.amount >= MIN_CONTRACT_VALUE ? v : null;
+}
+
 export function money(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
   if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;

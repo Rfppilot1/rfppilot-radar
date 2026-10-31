@@ -2,7 +2,7 @@ import {
   Opportunity,
   extractKeyDates,
   isPublicUrl,
-  parseMoney,
+  parseEstimate,
   valueFromText,
   type ClassificationCode,
   type OpportunityStatus,
@@ -29,8 +29,8 @@ import { clean, contentHash, zonedToUtcIso } from "./util.js";
 export const TX_ESBD_BASE = "https://www.txsmartbuy.gov";
 export const TX_ESBD_SERVICE = `${TX_ESBD_BASE}/app/extensions/CPA/CPAMain/1.0.0/services/ESBD.Service.ss?c=852252&n=2`;
 export const TX_TZ = "America/Chicago";
-/** Bump when the detail parser reads new fields, so stored postings are re-read once. 2 = estimated value. */
-export const TX_DETAIL_VERSION = 2;
+/** Bump when the detail parser reads new fields, so stored postings are re-read once. 2 = estimated value; 3 = placeholder estimates ($0.01, $1) dropped. */
+export const TX_DETAIL_VERSION = 3;
 
 export const TxEsbdLine = z.object({
   internalid: z.string(),
@@ -315,6 +315,7 @@ export class TxEsbdConnector implements SourceConnector {
 }
 
 function estimatedValue(field: string | number | null | undefined, description: string | null) {
-  const amount = parseMoney(field ?? null);
+  // Placeholder estimates ($0.01, $1) fall through to the posting text, then to "not stated".
+  const amount = parseEstimate(field ?? null);
   return amount ? { amount, basis: "agency_estimate" as const, text: null } : valueFromText(description);
 }

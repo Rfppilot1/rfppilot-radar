@@ -193,6 +193,15 @@ describe("estimated value", () => {
     expect(valueFromText("A bid bond of $50,000 is required.")).toBeNull();
     expect(valueFromText("Hourly rates up to $150 per hour.")).toBeNull();
   });
+
+  it("treats placeholder estimates ($0.01, $1, $500) as not stated", async () => {
+    const { parseEstimate, MIN_CONTRACT_VALUE } = await import("../src/index.js");
+    expect(parseEstimate("0.01")).toBeNull();
+    expect(parseEstimate("1.00")).toBeNull();
+    expect(parseEstimate("$500")).toBeNull();
+    expect(parseEstimate(MIN_CONTRACT_VALUE)).toBe(1000);
+    expect(parseEstimate("59,500.00")).toBe(59500);
+  });
 });
 
 describe("strongest first", () => {

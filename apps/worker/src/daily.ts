@@ -43,6 +43,8 @@ export interface SourceResult {
   closed: number;
   rejected: number;
   complete: boolean;
+  /** Queried by posted-date window (SAM.gov): never complete by design, so judged by its last error-free run. */
+  windowed: boolean;
   closeRefused: boolean;
   deadlineHit: boolean;
   error: string | null;
@@ -78,6 +80,7 @@ export async function ingestSources(
         closed: r.closed.length,
         rejected: run.rejected.length,
         complete: run.complete,
+        windowed: run.windowed === true,
         closeRefused: r.closeRefused !== null,
         deadlineHit,
         error: null,
@@ -110,6 +113,7 @@ export async function ingestSources(
         closed: 0,
         rejected: 0,
         complete: false,
+        windowed: false,
         closeRefused: false,
         deadlineHit: controller?.signal.aborted ?? false,
         error,
@@ -384,9 +388,14 @@ export async function healthProblems(
     const seen = s.fetched + s.rejected;
     if (!s.deadlineHit && s.rejected >= 5 && s.rejected > seen * 0.25)
       problems.push(`${s.source}: ${s.rejected} of ${seen} records could not be read`);
-    const lastComplete = await repo.lastCompleteRunAt(s.source).catch(() => null);
-    if (lastComplete && Date.parse(now) - Date.parse(lastComplete) > STALE_AFTER_MS)
-      problems.push(`${s.source}: no complete run since ${lastComplete.slice(0, 10)}`);
+    // Windowed sources (SAM.gov) are never "complete" by design; for them, staleness means no error-free run.
+    const last = s.windowed
+      ? await repo.lastSuccessfulRunAt(s.source).catch(() => null)
+      : await repo.lastCompleteRunAt(s.source).catch(() => null);
+    if (last && Date.parse(now) - Date.parse(last) > STALE_AFTER_MS)
+      problems.push(
+        `${s.source}: no ${s.windowed ? "successful" : "complete"} run since ${last.slice(0, 10)}`,
+      );
   }
   for (const p of profiles)
     if (!p.ok) problems.push(`${p.tenantId}/${p.profileId}: ${p.step} failed (${p.error})`);

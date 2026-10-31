@@ -507,6 +507,16 @@ export class PostgresRepository implements Repository {
     return iso(r?.at ?? null);
   }
 
+  async lastSuccessfulRunAt(source: string) {
+    const r = (
+      await this.db.query<{ at: unknown }>(
+        `SELECT max(finished_at) AS at FROM ingest_runs WHERE source=$1 AND error IS NULL`,
+        [source],
+      )
+    ).rows[0];
+    return iso(r?.at ?? null);
+  }
+
   /** Session-level advisory lock held on one pooled connection for the length of the run. */
   async tryRunLock(name: string): Promise<RunLock | null> {
     const { q, release } = await this.lease();
