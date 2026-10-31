@@ -8,3 +8,4 @@ export * from "./openfema.js";
 export * from "./opengov.js";
 export * from "./bonfire.js";
 export * from "./vendorlink.js";
+export * from "./market/index.js";

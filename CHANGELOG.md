@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased: Market data collection (Flight Deck)
+
+- **New: public award data for Flight Deck's Market Intelligence.** Two collectors, both official open APIs with no key, verified against live responses on Oct 31, 2026:
+  - **USAspending** federal contract awards performed in Florida and Texas, for the NAICS codes the pilot profiles bid plus disaster debris and recovery: recipient, UEI, obligated amount, start and end dates (for recompetes), agency, NAICS/PSC.
+  - **FEMA Public Assistance** projects and applicant names for Florida and Texas: disaster spending by county and category (A = debris removal).
+- Stored in a separate `market` schema (migration 004): raw responses kept compressed and de-duplicated, every record linked to the response it came from, and a run log. Nothing touches opportunities, matches or digests (ADR 0004).
+- `radar market` runs it by hand; `RADAR_MARKET_COLLECT=1` runs it after the daily digests. Each run picks up where the last complete one ended (3-day overlap); the first run backfills from `RADAR_MARKET_SINCE` (default Oct 1, 2023). Failures, incomplete windows and stale sources go into the operator alert; a rejected API key is named as such.
+
 ## Unreleased: Fixes from the Oct 30 test batch
 
 - **Florida documents open.** MyFloridaMarketPlace returns an attachment only when the request asks for a file; a plain link opened the portal's web app. The web app now links Florida documents through `/docs/mfmp/<attachmentId>`, which asks MFMP for the file and passes it through (numeric ids only, MFMP's download address only, behind the staging password, unexpected types served as downloads).

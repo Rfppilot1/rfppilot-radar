@@ -100,3 +100,43 @@ Common rules for all sources:
 | Access | OpenFEMA API, `DisasterDeclarationsSummaries` v2, no key                                                 |
 | Basis  | Official open-data API                                                                                   |
 | Use    | Demand signal only: new declarations with Public Assistance predict recovery and consulting procurements |
+
+---
+
+# Market data (Flight Deck Market Intelligence)
+
+Public award data, stored in the `market` schema, separate from opportunities. Collectors never create notices
+or alerts. Every raw response is kept (compressed, `market.captures`) and each record points at the capture it
+came from, so any figure can show its source and date. Same rules as above: official APIs and public pages only,
+no logins, identified and paced requests.
+
+## usaspending
+
+|             |                                                                                                                                                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Owner       | U.S. Department of the Treasury (USAspending.gov; data from FPDS / SAM.gov)                                                                                                                                                                      |
+| Access      | `POST https://api.usaspending.gov/api/v2/search/spending_by_award/`, no key. Verified live Oct 31, 2026                                                                                                                                          |
+| Basis       | Official open-data API                                                                                                                                                                                                                           |
+| Scope       | Contract awards (types A–D) with place of performance in `RADAR_MARKET_STATES`, NAICS in `RADAR_MARKET_NAICS`                                                                                                                                    |
+| Fields used | Award ID, recipient name and UEI, award amount (obligated to date), start/end dates, awarding agency and sub-agency, award type, NAICS, PSC, place of performance state, description, last modified, internal award id (for the award page link) |
+| Limits      | 100 rows per page and a 10,000-row ceiling per query: windows are split by month and state; a month at the ceiling is marked incomplete and reported                                                                                             |
+| Gotchas     | `country` must be `"USA"` (`"US"` returns nothing); unknown filter keys are ignored silently, so filters are pinned by tests                                                                                                                     |
+
+## openfema-pa
+
+|             |                                                                                                                                                |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner       | FEMA                                                                                                                                           |
+| Access      | OpenFEMA `v2/PublicAssistanceFundedProjectsDetails` and `v1/PublicAssistanceApplicants`, no key. Verified live Oct 31, 2026                    |
+| Basis       | Official open-data API                                                                                                                         |
+| Scope       | Every Public Assistance project in the tracked states (all damage categories; A = debris removal), plus applicant names                        |
+| Use         | Demand signal: who spent disaster money on what, by county. Names no contractors                                                               |
+| Incremental | Filter `lastRefresh ge <last window end − 3 days>`; FEMA reloads applicants whole each day, so applicant pages are de-duplicated by their rows |
+| Gotchas     | The v1 projects endpoint is gone; projects filter on `stateAbbreviation`, applicants on the full state name (`state eq 'Florida'`)             |
+
+## Planned (not yet collected)
+
+- **SAM.gov Contract Awards** (replaced FPDS in 2026): needs the SAM.gov API key (personal keys expire every 90 days; a rejected key is reported as such).
+- **Texas LBB Contracts Database**: the public site is a Dash app; its "Download Data" export needs to be confirmed as an allowed, stable route first.
+- **Florida FACTS**: public search with spreadsheet export; terms and access to be confirmed before collection.
+- **TxDOT bid tabulations**, **ESBD awards**, **MFMP Agency Decisions**: see the Flight Deck spec, Section 8.
