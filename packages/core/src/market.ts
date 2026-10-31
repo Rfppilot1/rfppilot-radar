@@ -5,7 +5,7 @@
  * Intelligence views. They are separate from the opportunity connectors: they never create notices or alerts,
  * and every record keeps the raw page it came from so any figure can be traced to its source and date.
  */
-export type MarketSourceId = "usaspending" | "usaspending-detail" | "openfema-pa";
+export type MarketSourceId = "usaspending" | "usaspending-detail" | "sam-awards" | "openfema-pa";
 
 /** One raw response exactly as the source returned it, kept for audit and re-parsing. */
 export interface MarketCapture {
@@ -28,6 +28,15 @@ export interface MarketWindow {
   since: string;
   /** Records changed before this instant (default: now). */
   until?: string;
+  /** Page to start at when resuming a window an earlier run could not finish. */
+  offset?: number;
+}
+
+/** Where a run stopped inside its window, so the next run resumes there instead of starting over. */
+export interface MarketCursor {
+  since: string;
+  until: string;
+  offset: number;
 }
 
 export interface MarketRun<T> {
@@ -40,6 +49,8 @@ export interface MarketRun<T> {
   /** False when a page cap or result ceiling cut the window short; the next run starts from the same point. */
   complete: boolean;
   notes: string[];
+  /** Set when the run stopped early (request budget, rate limit); the next run resumes from it. */
+  cursor?: MarketCursor | null;
 }
 
 /** How an amount was measured. Figures are only ever added up within one type. */
@@ -133,6 +144,37 @@ export interface FederalAwardDetail {
   totalObligation: number | null;
   potentialEndDate: string | null;
   parentAwardKey: string | null;
+  contentHash: string;
+  captureIndex?: number;
+}
+
+/**
+ * One federal contract action (an award or a modification) from SAM.gov's Contract Awards API, the system that
+ * replaced FPDS in 2026. Transaction-level, so one contract can have many rows.
+ */
+export interface FederalAction {
+  /** piid | modification number | referenced IDV piid */
+  key: string;
+  piid: string;
+  modificationNumber: string | null;
+  referencedIdvPiid: string | null;
+  contractingDepartment: string | null;
+  contractingOffice: string | null;
+  awardeeName: string | null;
+  awardeeUei: string | null;
+  naics: string | null;
+  psc: string | null;
+  popState: string | null;
+  actionObligation: number | null;
+  totalObligation: number | null;
+  baseAndAllOptions: number | null;
+  dateSigned: string | null;
+  currentCompletionDate: string | null;
+  ultimateCompletionDate: string | null;
+  offersReceived: number | null;
+  extentCompeted: string | null;
+  extentCompetedName: string | null;
+  solicitationId: string | null;
   contentHash: string;
   captureIndex?: number;
 }

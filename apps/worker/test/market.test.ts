@@ -101,6 +101,50 @@ describe("award detail job", () => {
   });
 });
 
+describe("resuming a window", () => {
+  it("finishes a window from its cursor before moving on, and does not alert for a planned stop", async () => {
+    const store = new MemoryMarketStore();
+    const seen: MarketWindow[] = [];
+    const sam = (stopAt: number | null): MarketJob => ({
+      id: "sam-awards",
+      async fetch(w) {
+        seen.push(w);
+        return {
+          source: "sam-awards",
+          records: [],
+          captures: [],
+          rejected: [],
+          fetchedAt: NOW,
+          window: { since: w.since, until: w.until ?? NOW },
+          complete: stopAt === null,
+          notes: [],
+          cursor: stopAt === null ? null : { since: w.since, until: w.until ?? NOW, offset: stopAt },
+        };
+      },
+    });
+    const first = await collectMarket(store, [sam(2)], {
+      log: quiet,
+      now: NOW,
+      backfillSince: "2023-10-01T00:00:00.000Z",
+      backfillSinceFor: { "sam-awards": "2026-10-01T00:00:00.000Z" },
+    });
+    expect(seen[0]!.since).toBe("2026-10-01T00:00:00.000Z");
+    expect(await marketProblems(store, first, NOW)).toEqual([]);
+    await collectMarket(store, [sam(null)], {
+      log: quiet,
+      now: "2026-11-01T15:00:00.000Z",
+      backfillSince: "2026-10-01T00:00:00.000Z",
+    });
+    expect(seen[1]).toEqual({ since: "2026-10-01T00:00:00.000Z", until: NOW, offset: 2 });
+    await collectMarket(store, [sam(null)], {
+      log: quiet,
+      now: "2026-11-02T15:00:00.000Z",
+      backfillSince: "2026-10-01T00:00:00.000Z",
+    });
+    expect(seen[2]).toEqual({ since: "2026-10-28T15:00:00.000Z", until: "2026-11-02T15:00:00.000Z" });
+  });
+});
+
 describe("market collection job", () => {
   it("backfills the first time, then continues from the last window minus a 3-day overlap", async () => {
     const store = new MemoryMarketStore();

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased: SAM.gov contract awards
+
+- **New collector `sam-awards`:** contract actions from SAM.gov's Contract Awards API (the FPDS replacement) for Florida and Texas and the tracked NAICS codes: awardee and UEI, contracting office, obligation, ceiling, completion dates, offers received, competition, solicitation number. Uses the existing `SAM_API_KEY`.
+- **Respects the shared quota:** at most `RADAR_SAM_AWARDS_MAX_REQUESTS` per run (default 2), stops on 429, and saves a cursor so the next run resumes the same window (`market.runs.cursor`, migration 006). Planned stops don't trigger alerts.
+- Starts 14 days back (`RADAR_SAM_AWARDS_SINCE`); USAspending already covers the history.
+
 ## Unreleased: Award competition details
 
 - **New collector `usaspending-detail`:** for each federal award that is new or changed, reads how many offers were received, how it was competed (full and open, set-aside, sole source), the solicitation number, the ceiling (base + all options) and the potential end date with options. One request per award, capped per run (`RADAR_MARKET_DETAIL_MAX`, default 1,000); runs after the award search. Migration 005 adds the columns.

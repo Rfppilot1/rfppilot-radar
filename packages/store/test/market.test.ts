@@ -151,6 +151,26 @@ describe.each([
     expect(await store.lastMarketWindowEnd("openfema-pa")).toBe("2026-10-29T10:00:00.000Z");
     expect(await store.lastMarketSuccessAt("openfema-pa")).toBe("2026-10-30T10:00:00.000Z");
     expect(await store.lastMarketWindowEnd("usaspending")).toBeNull();
+    // The latest run stopped at a request budget: its cursor is where the next run resumes.
+    const cursor = { since: "2026-10-01T00:00:00.000Z", until: "2026-10-31T10:00:00.000Z", offset: 2 };
+    await store.recordMarketRun({
+      source: "sam-awards",
+      startedAt: NOW,
+      finishedAt: NOW,
+      windowSince: cursor.since,
+      windowUntil: cursor.until,
+      fetched: 200,
+      inserted: 200,
+      updated: 0,
+      rejected: 0,
+      captures: 2,
+      complete: false,
+      notes: [],
+      error: null,
+      cursor,
+    });
+    expect(await store.lastMarketCursor("sam-awards")).toEqual(cursor);
+    expect(await store.lastMarketCursor("openfema-pa")).toBeNull();
   });
 });
 
@@ -235,6 +255,13 @@ describe("market store: postgres details", () => {
         `SELECT table_name AS t FROM information_schema.tables WHERE table_schema='market' ORDER BY 1`,
       )
     ).rows.map((r) => r.t);
-    expect(tables).toEqual(["captures", "federal_awards", "pa_applicants", "pa_projects", "runs"]);
+    expect(tables).toEqual([
+      "captures",
+      "federal_actions",
+      "federal_awards",
+      "pa_applicants",
+      "pa_projects",
+      "runs",
+    ]);
   });
 });
