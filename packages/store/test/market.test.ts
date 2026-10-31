@@ -1,6 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import { PGlite } from "@electric-sql/pglite";
-import type { FederalAward, MarketCapture, PaApplicant, PaProject } from "@radar/core";
+import type { FederalAward, FederalAwardDetail, MarketCapture, PaApplicant, PaProject } from "@radar/core";
 import { describe, expect, it } from "vitest";
 import { MemoryMarketStore, PostgresMarketStore, migrate, type MarketStore } from "../src/index.js";
 
@@ -154,7 +154,63 @@ describe.each([
   });
 });
 
+const detail = (key: string, over: Partial<FederalAwardDetail> = {}): FederalAwardDetail => ({
+  key,
+  solicitationId: "SOL-1",
+  offersReceived: 3,
+  extentCompeted: "A",
+  extentCompetedName: "FULL AND OPEN COMPETITION",
+  setAside: null,
+  setAsideName: null,
+  pricingType: "FIRM FIXED PRICE",
+  baseAndAllOptions: 500000,
+  totalObligation: 125000,
+  potentialEndDate: "2029-06-30",
+  parentAwardKey: null,
+  contentHash: `d-${key}`,
+  captureIndex: 0,
+  ...over,
+});
+
+describe.each([
+  ["memory", async (): Promise<MarketStore> => new MemoryMarketStore()],
+  ["postgres (PGlite)", async (): Promise<MarketStore> => (await pg()).store],
+])("market store award details: %s", (_name, make) => {
+  it("queues awards for details, prefers live contracts, and re-queues an award when it changes", async () => {
+    const store = await make();
+    const [id] = await store.saveCaptures([cap("{}")]);
+    await store.upsertFederalAwards(
+      [award("OLD", { endDate: "2019-01-01" }), award("LIVE", { endDate: "2027-06-30" })],
+      [id!],
+      NOW,
+    );
+    expect(await store.awardsNeedingDetail(10, NOW)).toEqual(["LIVE", "OLD"]);
+    expect(await store.awardsNeedingDetail(1, NOW)).toEqual(["LIVE"]);
+    expect(await store.saveAwardDetails([detail("LIVE"), detail("OLD"), detail("MISSING")], [id!], NOW)).toBe(
+      2,
+    );
+    expect(await store.awardsNeedingDetail(10, NOW)).toEqual([]);
+    // A changed award (new obligation) needs its details read again.
+    await store.upsertFederalAwards([award("LIVE", { amount: 9, contentHash: "h-LIVE-2" })], [id!], LATER);
+    expect(await store.awardsNeedingDetail(10, LATER)).toEqual(["LIVE"]);
+  });
+});
+
 describe("market store: postgres details", () => {
+  it("stores award details next to the award", async () => {
+    const { store, db } = await pg();
+    const [id] = await store.saveCaptures([cap("{}")]);
+    await store.upsertFederalAwards([award("A1")], [id!], NOW);
+    await store.saveAwardDetails([detail("A1")], [id!], NOW);
+    const r = (
+      await db.query<{ offers_received: number; base_and_all_options: string; potential_end_date: unknown }>(
+        `SELECT offers_received, base_and_all_options, potential_end_date FROM market.federal_awards`,
+      )
+    ).rows[0]!;
+    expect(r.offers_received).toBe(3);
+    expect(Number(r.base_and_all_options)).toBe(500000);
+  });
+
   it("keeps the raw body compressed and links each record to its capture", async () => {
     const { store, db } = await pg();
     const [id] = await store.saveCaptures([cap('{"results":["raw"]}')]);

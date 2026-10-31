@@ -2,6 +2,8 @@
 
 - `*.verbatim.json` are records copied exactly as each public source returned them, with the capture date in the
   filename. They pin the parsers to real payloads.
+- `*.subset.json` are fields copied verbatim from a live response, keeping only the fields the parser reads (the full
+  response is too large to keep usefully). Values are unchanged.
 - `*.synthetic.json` are hand-written records that follow the source's documented or observed schema. They cover
   edge cases (ITN/RFP types, addenda, missing fields) and are not real postings.
 

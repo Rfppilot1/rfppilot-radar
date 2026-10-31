@@ -4,6 +4,8 @@ import {
   HttpClient,
   OpenFemaPaCollector,
   UsaspendingCollector,
+  UsaspendingDetailCollector,
+  normalizeAwardDetail,
   monthSlices,
   normalizePaApplicant,
   normalizePaProject,
@@ -168,5 +170,44 @@ describe("OpenFEMA Public Assistance", () => {
     });
     const run = await collector.fetch({ since: "2026-10-25T00:00:00.000Z" });
     expect(run.notes[0]).toMatch(/NM: no state name/);
+  });
+});
+
+describe("USAspending award details", () => {
+  const detail = fx("usaspending-award-detail.2026-10-31.subset.json");
+
+  it("reads offers, competition, solicitation, ceiling and potential end date from the live record", () => {
+    expect(normalizeAwardDetail(detail)).toMatchObject({
+      key: "CONT_AWD_47QFCA21F0058_4732_GS00Q14OADU117_4732",
+      solicitationId: "47QFCA21R0074",
+      offersReceived: 4,
+      extentCompeted: "A",
+      extentCompetedName: "FULL AND OPEN COMPETITION",
+      setAside: null,
+      pricingType: "COST PLUS AWARD FEE",
+      baseAndAllOptions: 1078384543,
+      totalObligation: 888673071.6,
+      potentialEndDate: "2027-01-05",
+      parentAwardKey: "CONT_IDV_GS00Q14OADU117_4732",
+    });
+    const blank = { ...detail, latest_transaction_contract_data: { number_of_offers_received: "" } };
+    expect(normalizeAwardDetail(blank).offersReceived).toBeNull();
+  });
+
+  it("requests one award page per key and skips awards that are gone", async () => {
+    const urls: string[] = [];
+    const run = await new UsaspendingDetailCollector({
+      http: http(async (u) => {
+        urls.push(u);
+        return u.includes("GONE") ? new Response("", { status: 404 }) : new Response(JSON.stringify(detail));
+      }),
+      now: () => AT,
+    }).fetchFor(["CONT_AWD_47QFCA21F0058_4732_GS00Q14OADU117_4732", "GONE"]);
+    expect(urls[0]).toBe(
+      "https://api.usaspending.gov/api/v2/awards/CONT_AWD_47QFCA21F0058_4732_GS00Q14OADU117_4732/",
+    );
+    expect(run.records).toHaveLength(1);
+    expect(run.records[0]!.captureIndex).toBe(0);
+    expect(run.notes).toEqual(["1 award(s) no longer on USAspending"]);
   });
 });

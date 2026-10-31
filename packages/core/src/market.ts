@@ -5,7 +5,7 @@
  * Intelligence views. They are separate from the opportunity connectors: they never create notices or alerts,
  * and every record keeps the raw page it came from so any figure can be traced to its source and date.
  */
-export type MarketSourceId = "usaspending" | "openfema-pa";
+export type MarketSourceId = "usaspending" | "usaspending-detail" | "openfema-pa";
 
 /** One raw response exactly as the source returned it, kept for audit and re-parsing. */
 export interface MarketCapture {
@@ -111,6 +111,28 @@ export interface PaApplicant {
   state: string | null;
   city: string | null;
   lastRefresh: string | null;
+  contentHash: string;
+  captureIndex?: number;
+}
+
+/**
+ * Competition and term details for a federal award, from USAspending's award page data (the latest contract
+ * transaction). Adds what the search results lack: how many offers were received, how it was competed, the
+ * solicitation number, the ceiling (base + all options) and the potential end date with options.
+ */
+export interface FederalAwardDetail {
+  key: string;
+  solicitationId: string | null;
+  offersReceived: number | null;
+  extentCompeted: string | null;
+  extentCompetedName: string | null;
+  setAside: string | null;
+  setAsideName: string | null;
+  pricingType: string | null;
+  baseAndAllOptions: number | null;
+  totalObligation: number | null;
+  potentialEndDate: string | null;
+  parentAwardKey: string | null;
   contentHash: string;
   captureIndex?: number;
 }
