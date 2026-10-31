@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased: Award competition details
+
+- **New collector `usaspending-detail`:** for each federal award that is new or changed, reads how many offers were received, how it was competed (full and open, set-aside, sole source), the solicitation number, the ceiling (base + all options) and the potential end date with options. One request per award, capped per run (`RADAR_MARKET_DETAIL_MAX`, default 1,000); runs after the award search. Migration 005 adds the columns.
+- Used instead of the SAM.gov Contract Awards API: same FPDS data, without SAM's 10-requests-a-day limit on personal keys.
+
 ## Unreleased: Market data collection (Flight Deck)
 
 - **New: public award data for Flight Deck's Market Intelligence.** Two collectors, both official open APIs with no key, verified against live responses on Oct 31, 2026:

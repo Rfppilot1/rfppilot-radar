@@ -99,5 +99,6 @@ schema. It runs after the digests, so it never delays an email, and a failure on
   pick up where the last complete run ended, with a 3-day overlap.
 - Optional: `RADAR_MARKET_STATES` (default `FL,TX`), `RADAR_MARKET_NAICS` (default: IT/IV&V, consulting, planning,
   engineering, debris and recovery codes; see `DEFAULT_MARKET_NAICS` in `apps/worker/src/cli.ts`),
-  `RADAR_MARKET_SOURCES` (default `usaspending,openfema-pa`).
+  `RADAR_MARKET_SOURCES` (default `usaspending,usaspending-detail,openfema-pa`), `RADAR_MARKET_DETAIL_MAX` (award
+  detail requests per run, default 1,000; the backlog from the first backfill clears over several runs).
 - To run it once by hand: `node apps/worker/dist/cli.js market` (or `pnpm --filter @radar/worker exec radar market`).

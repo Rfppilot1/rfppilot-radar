@@ -51,6 +51,56 @@ function job(records: FederalAward[], windows: MarketWindow[] = [], fail?: Error
   };
 }
 
+describe("award detail job", () => {
+  it("reads details for queued awards up to the cap and notes the backlog", async () => {
+    const store = new MemoryMarketStore();
+    await store.upsertFederalAwards([award("A"), award("B"), award("C")], [], NOW);
+    const asked: string[][] = [];
+    const detailJob: MarketJob = {
+      id: "usaspending-detail",
+      async fetchFor(keys) {
+        asked.push(keys);
+        return {
+          source: "usaspending-detail",
+          records: keys.map((key) => ({
+            key,
+            solicitationId: null,
+            offersReceived: 2,
+            extentCompeted: null,
+            extentCompetedName: null,
+            setAside: null,
+            setAsideName: null,
+            pricingType: null,
+            baseAndAllOptions: null,
+            totalObligation: null,
+            potentialEndDate: null,
+            parentAwardKey: null,
+            contentHash: key,
+          })),
+          captures: [],
+          rejected: [],
+          fetchedAt: NOW,
+          window: { since: NOW, until: NOW },
+          complete: true,
+          notes: [],
+        };
+      },
+    };
+    const [r] = await collectMarket(store, [detailJob], {
+      log: quiet,
+      now: NOW,
+      backfillSince: NOW,
+      detailMax: 2,
+    });
+    expect(asked[0]).toHaveLength(2);
+    expect(r).toMatchObject({ ok: true, fetched: 2, updated: 2 });
+    expect(store.runs[0]!.notes).toEqual(["more awards are waiting for details; the next run continues"]);
+    await collectMarket(store, [detailJob], { log: quiet, now: NOW, backfillSince: NOW, detailMax: 2 });
+    expect(asked[1]).toHaveLength(1);
+    expect(store.runs[1]!.notes).toEqual([]);
+  });
+});
+
 describe("market collection job", () => {
   it("backfills the first time, then continues from the last window minus a 3-day overlap", async () => {
     const store = new MemoryMarketStore();

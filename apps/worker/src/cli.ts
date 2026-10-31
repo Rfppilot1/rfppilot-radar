@@ -13,6 +13,7 @@ import {
   TxEsbdConnector,
   OpenFemaPaCollector,
   UsaspendingCollector,
+  UsaspendingDetailCollector,
   TX_DETAIL_VERSION,
   normalizeFlAd,
   normalizeSam,
@@ -67,7 +68,7 @@ import { recentSignals } from "./signals.js";
  *   radar daily [--out-dir data/digests] [--profiles a.json,b.json] [--imports src=file.json,...] [--sources none]
  *                                                  ingest + score + one digest per profile
  *                                                  (+ market collection when RADAR_MARKET_COLLECT=1)
- *   radar market [--market-sources usaspending,openfema-pa] [--since ISO]
+ *   radar market [--market-sources usaspending,usaspending-detail,openfema-pa] [--since ISO]
  *                                                  collect public award data for Flight Deck
  */
 const USER_AGENT = process.env.RADAR_USER_AGENT ?? "RFPPilotRadar/0.1 (+https://rfppilot.com)";
@@ -134,6 +135,7 @@ function marketJobs(sources: string[]): MarketJob[] {
             .filter(Boolean),
         }),
       );
+    else if (s === "usaspending-detail") jobs.push(new UsaspendingDetailCollector({ http }));
     else if (s === "openfema-pa") jobs.push(new OpenFemaPaCollector({ http, states }));
     else throw new Error(`Unknown market source: ${s}`);
   }
@@ -149,6 +151,8 @@ async function market(store: MarketStore, sources: string[], since?: string): Pr
     now: new Date().toISOString(),
     backfillSince: MARKET_SINCE,
     since,
+    // Award detail requests per run (one request each). The backlog after the first backfill clears over a few runs.
+    detailMax: Number(process.env.RADAR_MARKET_DETAIL_MAX ?? 1000),
   });
 }
 
@@ -403,7 +407,10 @@ async function daily(
   // Public award data for Flight Deck, after the customer-facing work so it can never delay a digest.
   const marketResults =
     process.env.RADAR_MARKET_COLLECT === "1"
-      ? await market(marketStore, (process.env.RADAR_MARKET_SOURCES ?? "usaspending,openfema-pa").split(","))
+      ? await market(
+          marketStore,
+          (process.env.RADAR_MARKET_SOURCES ?? "usaspending,usaspending-detail,openfema-pa").split(","),
+        )
       : [];
 
   // Health check: one email to the operator (RADAR_ALERT_EMAIL) listing anything that went wrong.
@@ -485,7 +492,7 @@ async function main() {
       await withWorkerLock(repo, async () => {
         const results = await market(
           marketStore,
-          (values["market-sources"] ?? "usaspending,openfema-pa").split(","),
+          (values["market-sources"] ?? "usaspending,usaspending-detail,openfema-pa").split(","),
           values.since,
         );
         if (results.some((r) => !r.ok)) process.exitCode = 1;

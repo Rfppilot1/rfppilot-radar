@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import type { FederalAward, MarketCapture, MarketSourceId, PaApplicant, PaProject } from "@radar/core";
+import type {
+  FederalAward,
+  FederalAwardDetail,
+  MarketCapture,
+  MarketSourceId,
+  PaApplicant,
+  PaProject,
+} from "@radar/core";
 import type { Queryable } from "./postgres.js";
 
 /**
@@ -34,6 +41,14 @@ export interface MarketStore {
   upsertFederalAwards(awards: FederalAward[], captureIds: number[], now: string): Promise<MarketUpsert>;
   upsertPaProjects(projects: PaProject[], captureIds: number[], now: string): Promise<MarketUpsert>;
   upsertPaApplicants(applicants: PaApplicant[], now: string): Promise<MarketUpsert>;
+  /**
+   * Awards whose details were never read, or were read for an older version of the award, most recently changed
+   * first. Awards still running (or ending within a year) come before long-finished ones, since they matter for
+   * recompetes.
+   */
+  awardsNeedingDetail(limit: number, today: string): Promise<string[]>;
+  /** Saves details and marks them as read for the award's current version. Returns how many awards were saved. */
+  saveAwardDetails(details: FederalAwardDetail[], captureIds: number[], now: string): Promise<number>;
   recordMarketRun(run: MarketRunRecord): Promise<void>;
   /** End of the window of the source's latest complete, error-free run: where the next run picks up. */
   lastMarketWindowEnd(source: MarketSourceId): Promise<string | null>;
@@ -257,6 +272,51 @@ export class PostgresMarketStore implements MarketStore {
     return { inserted, updated };
   }
 
+  async awardsNeedingDetail(limit: number, today: string): Promise<string[]> {
+    const r = await this.db.query<{ award_key: string }>(
+      `SELECT award_key FROM market.federal_awards
+       WHERE detail_for_hash IS DISTINCT FROM content_hash
+       ORDER BY (end_date IS NULL OR end_date >= ($2::date - INTERVAL '1 year')) DESC, updated_at DESC, award_key
+       LIMIT $1`,
+      [limit, today.slice(0, 10)],
+    );
+    return r.rows.map((x) => x.award_key);
+  }
+
+  async saveAwardDetails(details: FederalAwardDetail[], captureIds: number[], now: string): Promise<number> {
+    let changed = 0;
+    for (const d of details) {
+      const r = await this.db.query<{ award_key: string }>(
+        `UPDATE market.federal_awards SET
+           solicitation_id=$2, offers_received=$3, extent_competed=$4, extent_competed_name=$5, set_aside=$6,
+           set_aside_name=$7, pricing_type=$8, base_and_all_options=$9, total_obligation=$10, potential_end_date=$11,
+           parent_award_key=$12, detail_capture_id=$14, detail_fetched_at=$15, detail_for_hash=content_hash,
+           detail_hash=$13
+         WHERE award_key=$1
+         RETURNING award_key`,
+        [
+          d.key,
+          d.solicitationId,
+          d.offersReceived,
+          d.extentCompeted,
+          d.extentCompetedName,
+          d.setAside,
+          d.setAsideName,
+          d.pricingType,
+          d.baseAndAllOptions,
+          d.totalObligation,
+          d.potentialEndDate,
+          d.parentAwardKey,
+          d.contentHash,
+          captureId(captureIds, d.captureIndex),
+          now,
+        ],
+      );
+      if (r.rows[0]) changed++;
+    }
+    return changed;
+  }
+
   async recordMarketRun(r: MarketRunRecord): Promise<void> {
     await this.db.query(
       `INSERT INTO market.runs (source, started_at, finished_at, window_since, window_until, fetched, inserted, updated,
@@ -331,14 +391,35 @@ export class MemoryMarketStore implements MarketStore {
     return { inserted, updated };
   }
 
-  async upsertFederalAwards(a: FederalAward[]) {
+  async upsertFederalAwards(a: FederalAward[], _captureIds?: number[], _now?: string) {
     return this.put(this.awards, a);
   }
-  async upsertPaProjects(p: PaProject[]) {
+  async upsertPaProjects(p: PaProject[], _captureIds?: number[], _now?: string) {
     return this.put(this.projects, p);
   }
-  async upsertPaApplicants(a: PaApplicant[]) {
+  async upsertPaApplicants(a: PaApplicant[], _now?: string) {
     return this.put(this.applicants, a);
+  }
+  readonly details = new Map<string, FederalAwardDetail & { forHash: string }>();
+  async awardsNeedingDetail(limit: number, today: string) {
+    const cutoff = `${Number(today.slice(0, 4)) - 1}${today.slice(4, 10)}`;
+    return [...this.awards.values()]
+      .filter((a) => this.details.get(a.key)?.forHash !== a.contentHash)
+      .sort((x, y) =>
+        Number(!x.endDate || x.endDate >= cutoff) < Number(!y.endDate || y.endDate >= cutoff) ? 1 : -1,
+      )
+      .slice(0, limit)
+      .map((a) => a.key);
+  }
+  async saveAwardDetails(details: FederalAwardDetail[], _captureIds?: number[], _now?: string) {
+    let changed = 0;
+    for (const d of details) {
+      const a = this.awards.get(d.key);
+      if (!a) continue;
+      this.details.set(d.key, { ...d, forHash: a.contentHash });
+      changed++;
+    }
+    return changed;
   }
   async recordMarketRun(r: MarketRunRecord) {
     this.runs.push(r);

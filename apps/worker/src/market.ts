@@ -1,4 +1,4 @@
-import type { FederalAward, MarketRun, MarketSourceId, MarketWindow } from "@radar/core";
+import type { FederalAward, FederalAwardDetail, MarketRun, MarketSourceId, MarketWindow } from "@radar/core";
 import type { PaRecords } from "@radar/connectors";
 import { HttpError } from "@radar/connectors";
 import type { MarketStore } from "@radar/store";
@@ -6,10 +6,12 @@ import type { MarketStore } from "@radar/store";
 type Log = (e: Record<string, unknown>) => void;
 
 /** A market collector, as the job sees it: fetch a window, get records and raw captures back. */
-export interface MarketJob {
-  id: MarketSourceId;
-  fetch(window: MarketWindow): Promise<MarketRun<FederalAward> | MarketRun<PaRecords>>;
-}
+export type MarketJob =
+  | {
+      id: "usaspending" | "openfema-pa";
+      fetch(window: MarketWindow): Promise<MarketRun<FederalAward> | MarketRun<PaRecords>>;
+    }
+  | { id: "usaspending-detail"; fetchFor(keys: string[]): Promise<MarketRun<FederalAwardDetail>> };
 
 export interface MarketResult {
   source: MarketSourceId;
@@ -36,13 +38,52 @@ export const MARKET_STALE_AFTER_MS = 4 * 86_400_000;
 export async function collectMarket(
   store: MarketStore,
   jobs: MarketJob[],
-  o: { log: Log; now: string; backfillSince: string; since?: string },
+  o: { log: Log; now: string; backfillSince: string; since?: string; detailMax?: number },
 ): Promise<MarketResult[]> {
   const out: MarketResult[] = [];
   for (const job of jobs) {
     const started = new Date().toISOString();
     let window: { since: string; until: string } | null = null;
     try {
+      if (job.id === "usaspending-detail") {
+        // Details for awards that are new or changed since their details were last read, capped per run; the rest
+        // are picked up by later runs. Runs after the award search so today's changes are included.
+        const keys = await store.awardsNeedingDetail(o.detailMax ?? 1000, o.now);
+        const run = await job.fetchFor(keys);
+        const ids = await store.saveCaptures(run.captures);
+        const saved = await store.saveAwardDetails(run.records, ids, o.now);
+        const remaining = (await store.awardsNeedingDetail(1, o.now)).length > 0;
+        if (remaining) run.notes.push("more awards are waiting for details; the next run continues");
+        await store.recordMarketRun({
+          source: job.id,
+          startedAt: started,
+          finishedAt: new Date().toISOString(),
+          windowSince: null,
+          windowUntil: null,
+          fetched: run.records.length,
+          inserted: 0,
+          updated: saved,
+          rejected: run.rejected.length,
+          captures: run.captures.length,
+          complete: run.complete,
+          notes: run.notes,
+          error: null,
+        });
+        const res: MarketResult = {
+          source: job.id,
+          ok: true,
+          fetched: run.records.length,
+          inserted: 0,
+          updated: saved,
+          rejected: run.rejected.length,
+          complete: run.complete,
+          window: null,
+          error: null,
+        };
+        out.push(res);
+        o.log({ event: "market", ...res, requested: keys.length, notes: run.notes });
+        continue;
+      }
       const last = await store.lastMarketWindowEnd(job.id);
       const since =
         o.since ??

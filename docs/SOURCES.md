@@ -122,6 +122,17 @@ no logins, identified and paced requests.
 | Limits      | 100 rows per page and a 10,000-row ceiling per query: windows are split by month and state; a month at the ceiling is marked incomplete and reported                                                                                             |
 | Gotchas     | `country` must be `"USA"` (`"US"` returns nothing); unknown filter keys are ignored silently, so filters are pinned by tests                                                                                                                     |
 
+## usaspending-detail
+
+|             |                                                                                                                                                                        |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner       | U.S. Department of the Treasury (USAspending.gov)                                                                                                                      |
+| Access      | `GET https://api.usaspending.gov/api/v2/awards/<generated_unique_award_id>/`, no key. Verified live Oct 31, 2026                                                       |
+| Basis       | Official open-data API                                                                                                                                                 |
+| Fields used | Number of offers received, extent competed, set-aside, solicitation number, pricing type, base + all options value, total obligation, potential end date, parent award |
+| Pace        | One request per award that is new or changed since its details were read; capped per run (`RADAR_MARKET_DETAIL_MAX`, default 1,000)                                    |
+| Why not SAM | The SAM.gov Contract Awards API has the same FPDS fields but allows a personal key 10 requests a day, shared with every other SAM call on that key                     |
+
 ## openfema-pa
 
 |             |                                                                                                                                                |
@@ -136,7 +147,7 @@ no logins, identified and paced requests.
 
 ## Planned (not yet collected)
 
-- **SAM.gov Contract Awards** (replaced FPDS in 2026): needs the SAM.gov API key (personal keys expire every 90 days; a rejected key is reported as such).
+- **SAM.gov Contract Awards**: not needed for now; `usaspending-detail` reads the same FPDS competition fields without SAM's 10-requests-a-day limit.
 - **Texas LBB Contracts Database**: the public site is a Dash app; its "Download Data" export needs to be confirmed as an allowed, stable route first.
-- **Florida FACTS**: public search with spreadsheet export; terms and access to be confirmed before collection.
+- **Florida FACTS**: public search with spreadsheet export. Its search terms (checked Oct 31, 2026) describe the system and the Chapter 119 route and place no limit on automated use; no robots.txt. Next to build.
 - **TxDOT bid tabulations**, **ESBD awards**, **MFMP Agency Decisions**: see the Flight Deck spec, Section 8.
