@@ -99,10 +99,14 @@ schema. It runs after the digests, so it never delays an email, and a failure on
   pick up where the last complete run ended, with a 3-day overlap.
 - Optional: `RADAR_MARKET_STATES` (default `FL,TX`), `RADAR_MARKET_NAICS` (default: IT/IV&V, consulting, planning,
   engineering, debris and recovery codes; see `DEFAULT_MARKET_NAICS` in `apps/worker/src/cli.ts`),
-  `RADAR_MARKET_SOURCES` (default `usaspending,usaspending-detail,sam-awards,openfema-pa`), `RADAR_MARKET_DETAIL_MAX` (award
+  `RADAR_MARKET_SOURCES` (default `usaspending,usaspending-detail,sam-awards,openfema-pa,fl-facts`), `RADAR_MARKET_DETAIL_MAX` (award
   detail requests per run, default 1,000; the backlog from the first backfill clears over several runs).
 - To run it once by hand: `node apps/worker/dist/cli.js market` (or `pnpm --filter @radar/worker exec radar market`).
 - SAM.gov contract awards use the worker's existing `SAM_API_KEY` and at most `RADAR_SAM_AWARDS_MAX_REQUESTS`
   requests per run (default 2), because a personal key without a SAM.gov role gets 10 requests a day across all SAM
   APIs. If the key has a role (1,000 a day), raise it, e.g. to `50`. When the key expires (every 90 days), the
   operator alert says the key was rejected.
+- Florida FACTS state contracts (`fl-facts`) run once a week (`RADAR_FACTS_INTERVAL_DAYS`, default 7) because FACTS has
+  no change date and each run re-reads its scope (a few minutes per agency). Optional: `RADAR_FACTS_AGENCIES` (six-digit
+  agency codes from the FACTS dropdown), `RADAR_FACTS_KINDS` (`contracts,grants`; add `purchase-orders` for small buys,
+  about 9× the volume), `RADAR_FACTS_BEGIN_SINCE` (default `RADAR_MARKET_SINCE`).

@@ -1,5 +1,5 @@
 import { HttpError } from "@radar/connectors";
-import type { FederalAward, MarketRun, MarketWindow } from "@radar/core";
+import type { FederalAward, MarketRun, MarketWindow, StateContract } from "@radar/core";
 import { MemoryMarketStore } from "@radar/store";
 import { describe, expect, it } from "vitest";
 import { collectMarket, marketProblems, type MarketJob } from "../src/market.js";
@@ -232,5 +232,52 @@ describe("market collection job", () => {
       "market openfema-pa: failed (HTTP 500)",
       "market openfema-pa: no successful run since 2026-10-20",
     ]);
+  });
+});
+
+describe("weekly sources", () => {
+  const facts = (calls: string[]): MarketJob => ({
+    id: "fl-facts",
+    minIntervalDays: 7,
+    async fetch(w) {
+      calls.push(w.until ?? "");
+      return {
+        source: "fl-facts",
+        records: [{ key: "FL|A|T|1", contentHash: "x", captureIndex: 0 } as StateContract],
+        captures: [{ source: "fl-facts", url: "u", request: null, retrievedAt: NOW, body: "csv" }],
+        rejected: [],
+        fetchedAt: NOW,
+        window: { since: w.since, until: w.until ?? NOW },
+        complete: true,
+        notes: [],
+      } satisfies MarketRun<StateContract>;
+    },
+  });
+  const at = (day: string) => ({
+    log: quiet,
+    now: `${day}T11:15:00.000Z`,
+    backfillSince: "2023-10-01T00:00:00.000Z",
+  });
+
+  it("runs the first time, skips until the interval has passed, then runs again", async () => {
+    const store = new MemoryMarketStore();
+    const calls: string[] = [];
+    const logs: Record<string, unknown>[] = [];
+    // The memory store stamps finishedAt with the wall clock; pin it to the run day.
+    const record = store.recordMarketRun.bind(store);
+    let day = "2026-11-02";
+    store.recordMarketRun = (r) => record({ ...r, finishedAt: `${day}T11:20:00.000Z` });
+    expect(await collectMarket(store, [facts(calls)], at(day))).toHaveLength(1);
+    expect(store.stateContracts.size).toBe(1);
+    day = "2026-11-05";
+    expect(await collectMarket(store, [facts(calls)], { ...at(day), log: (e) => logs.push(e) })).toEqual([]);
+    expect(logs[0]).toMatchObject({ event: "market_skipped", source: "fl-facts" });
+    day = "2026-11-09";
+    expect(await collectMarket(store, [facts(calls)], at(day))).toHaveLength(1);
+    expect(calls).toHaveLength(2);
+    // An explicit --since always runs.
+    expect(
+      await collectMarket(store, [facts(calls)], { ...at(day), since: "2025-01-01T00:00:00.000Z" }),
+    ).toHaveLength(1);
   });
 });

@@ -5,7 +5,7 @@
  * Intelligence views. They are separate from the opportunity connectors: they never create notices or alerts,
  * and every record keeps the raw page it came from so any figure can be traced to its source and date.
  */
-export type MarketSourceId = "usaspending" | "usaspending-detail" | "sam-awards" | "openfema-pa";
+export type MarketSourceId = "usaspending" | "usaspending-detail" | "sam-awards" | "openfema-pa" | "fl-facts";
 
 /** One raw response exactly as the source returned it, kept for audit and re-parsing. */
 export interface MarketCapture {
@@ -175,6 +175,48 @@ export interface FederalAction {
   extentCompeted: string | null;
   extentCompetedName: string | null;
   solicitationId: string | null;
+  contentHash: string;
+  captureIndex?: number;
+}
+
+/**
+ * One Florida state agency contract, grant agreement or purchase order, from FACTS (the Florida Accountability
+ * Contract Tracking System, run by the Department of Financial Services). Shows which vendor holds which state
+ * agreement, for how much and until when, including emergency procurements under executive orders.
+ */
+export interface StateContract {
+  /** state | agency | type | agency contract id or PO number or grant award id */
+  key: string;
+  state: "FL";
+  agency: string;
+  /** Null on the rare row FACTS lists with no vendor (1 of 871 in one export). */
+  vendor: string | null;
+  type: string | null;
+  contractId: string | null;
+  poNumber: string | null;
+  grantAwardId: string | null;
+  flairContractId: string | null;
+  title: string | null;
+  shortTitle: string | null;
+  status: string | null;
+  originalAmount: number | null;
+  /** FACTS "Total Amount": the agreement's current total including amendments. */
+  totalAmount: number | null;
+  amountType: AmountType;
+  commodityCode: string | null;
+  commodityDescription: string | null;
+  procurementMethod: string | null;
+  stateTermContractId: string | null;
+  agencyReference: string | null;
+  serviceArea: string | null;
+  recipientType: string | null;
+  beginDate: string | null;
+  originalEndDate: string | null;
+  newEndDate: string | null;
+  executedDate: string | null;
+  cfda: string | null;
+  csfa: string | null;
+  sourceUrl: string;
   contentHash: string;
   captureIndex?: number;
 }

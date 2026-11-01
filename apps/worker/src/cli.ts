@@ -12,6 +12,10 @@ import {
   SamGovConnector,
   TxEsbdConnector,
   OpenFemaPaCollector,
+  FlFactsCollector,
+  DEFAULT_FACTS_AGENCIES,
+  DEFAULT_FACTS_KINDS,
+  type FactsKind,
   UsaspendingCollector,
   UsaspendingDetailCollector,
   SamAwardsCollector,
@@ -69,7 +73,7 @@ import { recentSignals } from "./signals.js";
  *   radar daily [--out-dir data/digests] [--profiles a.json,b.json] [--imports src=file.json,...] [--sources none]
  *                                                  ingest + score + one digest per profile
  *                                                  (+ market collection when RADAR_MARKET_COLLECT=1)
- *   radar market [--market-sources usaspending,usaspending-detail,sam-awards,openfema-pa] [--since ISO]
+ *   radar market [--market-sources usaspending,usaspending-detail,sam-awards,openfema-pa,fl-facts] [--since ISO]
  *                                                  collect public award data for Flight Deck
  */
 const USER_AGENT = process.env.RADAR_USER_AGENT ?? "RFPPilotRadar/0.1 (+https://rfppilot.com)";
@@ -157,7 +161,30 @@ function marketJobs(sources: string[]): MarketJob[] {
         }),
       );
     } else if (s === "openfema-pa") jobs.push(new OpenFemaPaCollector({ http, states }));
-    else throw new Error(`Unknown market source: ${s}`);
+    else if (s === "fl-facts") {
+      // Its own client: FACTS needs a session cookie and its exports run to tens of megabytes.
+      const facts = new FlFactsCollector({
+        http: new HttpClient({
+          userAgent: USER_AGENT,
+          minIntervalMs: 2000,
+          timeoutMs: 300_000,
+          maxBytes: 150 * 1024 * 1024,
+          cookies: true,
+        }),
+        agencies: (process.env.RADAR_FACTS_AGENCIES ?? DEFAULT_FACTS_AGENCIES.join(","))
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean),
+        kinds: (process.env.RADAR_FACTS_KINDS ?? DEFAULT_FACTS_KINDS.join(","))
+          .split(",")
+          .map((x) => x.trim() as FactsKind)
+          .filter((x) => ["contracts", "grants", "purchase-orders"].includes(x)),
+        beginSince: process.env.RADAR_FACTS_BEGIN_SINCE ?? MARKET_SINCE,
+      });
+      jobs.push(
+        Object.assign(facts, { minIntervalDays: Number(process.env.RADAR_FACTS_INTERVAL_DAYS ?? 7) }),
+      );
+    } else throw new Error(`Unknown market source: ${s}`);
   }
   return jobs;
 }
@@ -434,9 +461,10 @@ async function daily(
     process.env.RADAR_MARKET_COLLECT === "1"
       ? await market(
           marketStore,
-          (process.env.RADAR_MARKET_SOURCES ?? "usaspending,usaspending-detail,sam-awards,openfema-pa").split(
-            ",",
-          ),
+          (
+            process.env.RADAR_MARKET_SOURCES ??
+            "usaspending,usaspending-detail,sam-awards,openfema-pa,fl-facts"
+          ).split(","),
         )
       : [];
 
@@ -519,7 +547,9 @@ async function main() {
       await withWorkerLock(repo, async () => {
         const results = await market(
           marketStore,
-          (values["market-sources"] ?? "usaspending,usaspending-detail,sam-awards,openfema-pa").split(","),
+          (
+            values["market-sources"] ?? "usaspending,usaspending-detail,sam-awards,openfema-pa,fl-facts"
+          ).split(","),
           values.since,
         );
         if (results.some((r) => !r.ok)) process.exitCode = 1;

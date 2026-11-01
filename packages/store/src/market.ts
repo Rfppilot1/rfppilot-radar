@@ -9,6 +9,7 @@ import type {
   MarketSourceId,
   PaApplicant,
   PaProject,
+  StateContract,
 } from "@radar/core";
 import type { Queryable } from "./postgres.js";
 
@@ -45,6 +46,7 @@ export interface MarketStore {
   upsertPaProjects(projects: PaProject[], captureIds: number[], now: string): Promise<MarketUpsert>;
   upsertPaApplicants(applicants: PaApplicant[], now: string): Promise<MarketUpsert>;
   upsertFederalActions(actions: FederalAction[], captureIds: number[], now: string): Promise<MarketUpsert>;
+  upsertStateContracts(contracts: StateContract[], captureIds: number[], now: string): Promise<MarketUpsert>;
   /** The cursor of the source's latest error-free run, when that run stopped early; otherwise null. */
   lastMarketCursor(source: MarketSourceId): Promise<MarketCursor | null>;
   /**
@@ -340,6 +342,84 @@ export class PostgresMarketStore implements MarketStore {
     );
   }
 
+  async upsertStateContracts(
+    contracts: StateContract[],
+    captureIds: number[],
+    now: string,
+  ): Promise<MarketUpsert> {
+    return this.upsert(
+      "market.state_contracts",
+      "contract_key",
+      [
+        "contract_key",
+        "state",
+        "agency",
+        "vendor",
+        "type",
+        "contract_id",
+        "po_number",
+        "grant_award_id",
+        "flair_contract_id",
+        "title",
+        "short_title",
+        "status",
+        "original_amount",
+        "total_amount",
+        "amount_type",
+        "commodity_code",
+        "commodity_description",
+        "procurement_method",
+        "state_term_contract_id",
+        "agency_reference",
+        "service_area",
+        "recipient_type",
+        "begin_date",
+        "original_end_date",
+        "new_end_date",
+        "executed_date",
+        "cfda",
+        "csfa",
+        "source_url",
+        "content_hash",
+        "capture_id",
+      ],
+      contracts.map((c) => [
+        c.key,
+        c.state,
+        c.agency,
+        c.vendor,
+        c.type,
+        c.contractId,
+        c.poNumber,
+        c.grantAwardId,
+        c.flairContractId,
+        c.title,
+        c.shortTitle,
+        c.status,
+        c.originalAmount,
+        c.totalAmount,
+        c.amountType,
+        c.commodityCode,
+        c.commodityDescription,
+        c.procurementMethod,
+        c.stateTermContractId,
+        c.agencyReference,
+        c.serviceArea,
+        c.recipientType,
+        c.beginDate,
+        c.originalEndDate,
+        c.newEndDate,
+        c.executedDate,
+        c.cfda,
+        c.csfa,
+        c.sourceUrl,
+        c.contentHash,
+        captureId(captureIds, c.captureIndex),
+      ]),
+      now,
+    );
+  }
+
   async lastMarketCursor(source: MarketSourceId): Promise<MarketCursor | null> {
     const r = await this.db.query<{ cursor: unknown }>(
       `SELECT cursor FROM market.runs WHERE source=$1 AND error IS NULL ORDER BY finished_at DESC, id DESC LIMIT 1`,
@@ -481,6 +561,10 @@ export class MemoryMarketStore implements MarketStore {
   readonly actions = new Map<string, FederalAction>();
   async upsertFederalActions(a: FederalAction[], _captureIds?: number[], _now?: string) {
     return this.put(this.actions, a);
+  }
+  readonly stateContracts = new Map<string, StateContract>();
+  async upsertStateContracts(c: StateContract[], _captureIds?: number[], _now?: string) {
+    return this.put(this.stateContracts, c);
   }
   async lastMarketCursor(source: MarketSourceId) {
     const last = this.runs.filter((r) => r.source === source && !r.error).at(-1);
