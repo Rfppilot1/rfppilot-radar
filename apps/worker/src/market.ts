@@ -5,6 +5,7 @@ import type {
   MarketRun,
   MarketSourceId,
   MarketWindow,
+  StateContract,
 } from "@radar/core";
 import type { PaRecords } from "@radar/connectors";
 import { HttpError } from "@radar/connectors";
@@ -20,7 +21,13 @@ export type MarketJob =
         window: MarketWindow,
       ): Promise<MarketRun<FederalAward> | MarketRun<PaRecords> | MarketRun<FederalAction>>;
     }
-  | { id: "usaspending-detail"; fetchFor(keys: string[]): Promise<MarketRun<FederalAwardDetail>> };
+  | { id: "usaspending-detail"; fetchFor(keys: string[]): Promise<MarketRun<FederalAwardDetail>> }
+  | {
+      id: "fl-facts";
+      /** Runs at most this often (FACTS is re-read whole each time, so weekly is plenty). */
+      minIntervalDays?: number;
+      fetch(window: MarketWindow): Promise<MarketRun<StateContract>>;
+    };
 
 export interface MarketResult {
   source: MarketSourceId;
@@ -64,6 +71,19 @@ export async function collectMarket(
     const started = new Date().toISOString();
     let window: { since: string; until: string } | null = null;
     try {
+      const every = "minIntervalDays" in job ? job.minIntervalDays : undefined;
+      if (every && !o.since) {
+        const last = await store.lastMarketSuccessAt(job.id);
+        // A little short of the full interval, so a weekly source runs on the same weekday each week.
+        if (last && Date.parse(o.now) - Date.parse(last) < (every - 0.5) * 86_400_000) {
+          o.log({
+            event: "market_skipped",
+            source: job.id,
+            reason: `ran ${last.slice(0, 10)}; runs every ${every} days`,
+          });
+          continue;
+        }
+      }
       if (job.id === "usaspending-detail") {
         // Details for awards that are new or changed since their details were last read, capped per run; the rest
         // are picked up by later runs. Runs after the award search so today's changes are included.
@@ -126,6 +146,10 @@ export async function collectMarket(
         const actions = run.records as FederalAction[];
         fetched = actions.length;
         ({ inserted, updated } = await store.upsertFederalActions(actions, ids, o.now));
+      } else if (job.id === "fl-facts") {
+        const contracts = run.records as StateContract[];
+        fetched = contracts.length;
+        ({ inserted, updated } = await store.upsertStateContracts(contracts, ids, o.now));
       } else {
         for (const r of run.records as PaRecords[]) {
           fetched += r.projects.length + r.applicants.length;

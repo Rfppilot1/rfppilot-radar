@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased: Florida state contracts (FACTS)
+
+- **New collector `fl-facts`:** Florida agency contracts and grant agreements from FACTS (Department of Financial Services): vendor, agency, amounts (original and current total), commodity, method of procurement (including emergency procurements under executive orders), state term contract, begin and end dates. Default agencies: Governor's office (Emergency Management), DEP, DOT, DMS, Commerce, Agriculture, Military Affairs, Health.
+- FACTS has no API: the collector uses the public search form and its CSV export with a session cookie (new optional cookie support in the HTTP client, off for every other source). Runs weekly; each run re-reads agreements that began since `RADAR_FACTS_BEGIN_SINCE` and writes only changed rows (migration 007, `market.state_contracts`).
+- Weekly sources: a market job can set a minimum interval; skipped runs are logged, not recorded, and don't alert.
+
 ## Unreleased: SAM.gov contract awards
 
 - **New collector `sam-awards`:** contract actions from SAM.gov's Contract Awards API (the FPDS replacement) for Florida and Texas and the tracked NAICS codes: awardee and UEI, contracting office, obligation, ceiling, completion dates, offers received, competition, solicitation number. Uses the existing `SAM_API_KEY`.

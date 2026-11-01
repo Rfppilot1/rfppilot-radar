@@ -1,6 +1,13 @@
 import { gunzipSync } from "node:zlib";
 import { PGlite } from "@electric-sql/pglite";
-import type { FederalAward, FederalAwardDetail, MarketCapture, PaApplicant, PaProject } from "@radar/core";
+import type {
+  FederalAward,
+  FederalAwardDetail,
+  MarketCapture,
+  PaApplicant,
+  PaProject,
+  StateContract,
+} from "@radar/core";
 import { describe, expect, it } from "vitest";
 import { MemoryMarketStore, PostgresMarketStore, migrate, type MarketStore } from "../src/index.js";
 
@@ -79,6 +86,41 @@ const cap = (body: string, contentKey?: string): MarketCapture => ({
   contentKey,
 });
 
+const contract = (id: string, over: Partial<StateContract> = {}): StateContract => ({
+  key: `FL|EXECUTIVE OFFICE OF THE GOVERNOR|Memorandum of Agreement|${id}`,
+  state: "FL",
+  agency: "EXECUTIVE OFFICE OF THE GOVERNOR",
+  vendor: "GARNER ENVIRONMENTAL SERVICES, INC.",
+  type: "Memorandum of Agreement",
+  contractId: id,
+  poNumber: null,
+  grantAwardId: null,
+  flairContractId: id,
+  title: "Garner00394",
+  shortTitle: "PO-010766",
+  status: "Active",
+  originalAmount: 1751680.15,
+  totalAmount: 1751680.15,
+  amountType: "award_fixed",
+  commodityCode: "93131800",
+  commodityDescription: "Disaster preparedness and relief",
+  procurementMethod: "Emergency procurement per Executive Order [s. 252.36(2), F.S.]",
+  stateTermContractId: null,
+  agencyReference: id,
+  serviceArea: null,
+  recipientType: "FOR PROFIT ORGANIZATION INCLUDES SOLE PROPRIETOR",
+  beginDate: "2025-10-30",
+  originalEndDate: null,
+  newEndDate: null,
+  executedDate: "2025-09-22",
+  cfda: null,
+  csfa: null,
+  sourceUrl: "https://facts.fldfs.com/Search/ContractSearch.aspx",
+  contentHash: `c-${id}`,
+  captureIndex: 0,
+  ...over,
+});
+
 async function pg(): Promise<{ store: PostgresMarketStore; db: PGlite }> {
   const db = new PGlite();
   await migrate(db as never);
@@ -113,6 +155,33 @@ describe.each([
     });
     expect(await store.upsertPaApplicants([applicant], NOW)).toEqual({ inserted: 1, updated: 0 });
     expect(await store.upsertPaApplicants([applicant], LATER)).toEqual({ inserted: 0, updated: 0 });
+  });
+
+  it("upserts state contracts by key and content", async () => {
+    const store = await make();
+    const [id] = await store.saveCaptures([{ ...cap("Agency Name,..."), source: "fl-facts" }]);
+    expect(await store.upsertStateContracts([contract("E6108"), contract("E6078")], [id!], NOW)).toEqual({
+      inserted: 2,
+      updated: 0,
+    });
+    expect(await store.upsertStateContracts([contract("E6108")], [id!], LATER)).toEqual({
+      inserted: 0,
+      updated: 0,
+    });
+    expect(
+      await store.upsertStateContracts(
+        [
+          contract("E6108", {
+            totalAmount: 1900000,
+            newEndDate: "2026-12-31",
+            contentHash: "c-v2",
+            vendor: null,
+          }),
+        ],
+        [id!],
+        LATER,
+      ),
+    ).toEqual({ inserted: 0, updated: 1 });
   });
 
   it("stores identical captures once", async () => {
@@ -262,6 +331,27 @@ describe("market store: postgres details", () => {
       "pa_applicants",
       "pa_projects",
       "runs",
+      "state_contracts",
     ]);
+  });
+});
+
+describe("market store: postgres state contracts", () => {
+  it("stores the columns Flight Deck reads", async () => {
+    const { store, db } = await pg();
+    const [id] = await store.saveCaptures([{ ...cap("csv"), source: "fl-facts" }]);
+    await store.upsertStateContracts([contract("E6108", { newEndDate: "2026-12-31" })], [id!], NOW);
+    const r = await db.query<Record<string, unknown>>(
+      `SELECT vendor, total_amount, amount_type, begin_date::text AS begin, new_end_date::text AS end_date,
+              procurement_method, capture_id FROM market.state_contracts`,
+    );
+    expect(r.rows[0]).toMatchObject({
+      vendor: "GARNER ENVIRONMENTAL SERVICES, INC.",
+      amount_type: "award_fixed",
+      begin: "2025-10-30",
+      end_date: "2026-12-31",
+      capture_id: id,
+    });
+    expect(Number(r.rows[0]!.total_amount)).toBe(1751680.15);
   });
 });

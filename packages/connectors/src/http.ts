@@ -14,6 +14,11 @@ export interface HttpClientOptions {
   maxBytes?: number;
   /** Aborts every request (and any pending retry) made through this client, e.g. a per-source deadline. */
   signal?: AbortSignal;
+  /**
+   * Keep cookies the server sets and send them back on later requests to the same host, for sources that need
+   * a session (ASP.NET forms). Off by default: API sources must not carry state between requests.
+   */
+  cookies?: boolean;
 }
 
 export class HttpError extends Error {
@@ -44,6 +49,7 @@ export class HttpAbortError extends Error {
 
 export class HttpClient {
   private readonly lastByHost = new Map<string, number>();
+  private readonly jar = new Map<string, Map<string, string>>();
   private readonly fetchImpl: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
 
@@ -82,8 +88,9 @@ export class HttpClient {
           signal: this.opts.signal
             ? AbortSignal.any([controller.signal, this.opts.signal])
             : controller.signal,
-          headers: { "user-agent": this.opts.userAgent, ...(init.headers ?? {}) },
+          headers: { "user-agent": this.opts.userAgent, ...this.cookieHeader(url), ...(init.headers ?? {}) },
         });
+        this.keepCookies(url, res);
         status = res.status;
         retryAfter = Number(res.headers.get("retry-after"));
         body = await readCapped(res, this.opts.maxBytes ?? DEFAULT_MAX_BYTES, url);
@@ -118,6 +125,38 @@ export class HttpClient {
       }),
     ]);
     signal.removeEventListener("abort", onAbort);
+  }
+
+  /** Drops any cookies held for every host, e.g. to start a fresh server session. */
+  clearCookies(): void {
+    this.jar.clear();
+  }
+
+  private cookieHeader(url: string): Record<string, string> {
+    if (!this.opts.cookies) return {};
+    const held = this.jar.get(new URL(url).host);
+    if (!held || held.size === 0) return {};
+    return { cookie: [...held].map(([k, v]) => `${k}=${v}`).join("; ") };
+  }
+
+  private keepCookies(url: string, res: Response) {
+    if (!this.opts.cookies) return;
+    const headers = res.headers as Headers & { getSetCookie?: () => string[] };
+    const set = headers.getSetCookie?.() ?? [];
+    if (set.length === 0) return;
+    const host = new URL(url).host;
+    const held = this.jar.get(host) ?? new Map<string, string>();
+    for (const line of set) {
+      const [pair = "", ...attrs] = line.split(";");
+      const eq = pair.indexOf("=");
+      if (eq <= 0) continue;
+      const name = pair.slice(0, eq).trim();
+      const value = pair.slice(eq + 1).trim();
+      const expired = attrs.some((a) => /^\s*max-age\s*=\s*0\s*$/i.test(a)) || value === "";
+      if (expired) held.delete(name);
+      else held.set(name, value);
+    }
+    this.jar.set(host, held);
   }
 
   private checkAborted(url: string) {
