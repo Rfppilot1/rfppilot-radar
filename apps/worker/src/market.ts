@@ -1,0 +1,253 @@
+import type {
+  FederalAction,
+  FederalAward,
+  FederalAwardDetail,
+  MarketRun,
+  MarketSourceId,
+  MarketWindow,
+  StateContract,
+} from "@radar/core";
+import type { PaRecords } from "@radar/connectors";
+import { HttpError } from "@radar/connectors";
+import type { MarketStore } from "@radar/store";
+
+type Log = (e: Record<string, unknown>) => void;
+
+/** A market collector, as the job sees it: fetch a window, get records and raw captures back. */
+export type MarketJob =
+  | {
+      id: "usaspending" | "openfema-pa" | "sam-awards";
+      fetch(
+        window: MarketWindow,
+      ): Promise<MarketRun<FederalAward> | MarketRun<PaRecords> | MarketRun<FederalAction>>;
+    }
+  | { id: "usaspending-detail"; fetchFor(keys: string[]): Promise<MarketRun<FederalAwardDetail>> }
+  | {
+      id: "fl-facts";
+      /** Runs at most this often (FACTS is re-read whole each time, so weekly is plenty). */
+      minIntervalDays?: number;
+      fetch(window: MarketWindow): Promise<MarketRun<StateContract>>;
+    };
+
+export interface MarketResult {
+  source: MarketSourceId;
+  ok: boolean;
+  fetched: number;
+  inserted: number;
+  updated: number;
+  rejected: number;
+  complete: boolean;
+  /** Stopped early on purpose (request budget, rate limit); the next run resumes. Not a problem. */
+  resuming?: boolean;
+  window: { since: string; until: string } | null;
+  error: string | null;
+}
+
+/** Days re-read at the start of each window, so late-arriving updates on the boundary are not missed. */
+export const OVERLAP_DAYS = 3;
+/** A source with no successful run for this long is reported. */
+export const MARKET_STALE_AFTER_MS = 4 * 86_400_000;
+
+/**
+ * Collects public market data. Each source picks up where its last complete run ended (minus a short overlap),
+ * or at `backfillSince` the first time. One source failing never stops the others; each run is recorded.
+ * Nothing here touches opportunities, matches or digests.
+ */
+export async function collectMarket(
+  store: MarketStore,
+  jobs: MarketJob[],
+  o: {
+    log: Log;
+    now: string;
+    backfillSince: string;
+    /** Per-source first-run start, e.g. a short one for a source with a tight request budget. */
+    backfillSinceFor?: Partial<Record<MarketSourceId, string>>;
+    since?: string;
+    detailMax?: number;
+  },
+): Promise<MarketResult[]> {
+  const out: MarketResult[] = [];
+  for (const job of jobs) {
+    const started = new Date().toISOString();
+    let window: { since: string; until: string } | null = null;
+    try {
+      const every = "minIntervalDays" in job ? job.minIntervalDays : undefined;
+      if (every && !o.since) {
+        const last = await store.lastMarketSuccessAt(job.id);
+        // A little short of the full interval, so a weekly source runs on the same weekday each week.
+        if (last && Date.parse(o.now) - Date.parse(last) < (every - 0.5) * 86_400_000) {
+          o.log({
+            event: "market_skipped",
+            source: job.id,
+            reason: `ran ${last.slice(0, 10)}; runs every ${every} days`,
+          });
+          continue;
+        }
+      }
+      if (job.id === "usaspending-detail") {
+        // Details for awards that are new or changed since their details were last read, capped per run; the rest
+        // are picked up by later runs. Runs after the award search so today's changes are included.
+        const keys = await store.awardsNeedingDetail(o.detailMax ?? 1000, o.now);
+        const run = await job.fetchFor(keys);
+        const ids = await store.saveCaptures(run.captures);
+        const saved = await store.saveAwardDetails(run.records, ids, o.now);
+        const remaining = (await store.awardsNeedingDetail(1, o.now)).length > 0;
+        if (remaining) run.notes.push("more awards are waiting for details; the next run continues");
+        await store.recordMarketRun({
+          source: job.id,
+          startedAt: started,
+          finishedAt: new Date().toISOString(),
+          windowSince: null,
+          windowUntil: null,
+          fetched: run.records.length,
+          inserted: 0,
+          updated: saved,
+          rejected: run.rejected.length,
+          captures: run.captures.length,
+          complete: run.complete,
+          notes: run.notes,
+          error: null,
+        });
+        const res: MarketResult = {
+          source: job.id,
+          ok: true,
+          fetched: run.records.length,
+          inserted: 0,
+          updated: saved,
+          rejected: run.rejected.length,
+          complete: run.complete,
+          window: null,
+          error: null,
+        };
+        out.push(res);
+        o.log({ event: "market", ...res, requested: keys.length, notes: run.notes });
+        continue;
+      }
+      // A run that stopped early (request budget, rate limit) left a cursor: finish that window first.
+      const cursor = o.since ? null : await store.lastMarketCursor(job.id);
+      const last = await store.lastMarketWindowEnd(job.id);
+      const since =
+        o.since ??
+        (last
+          ? new Date(Date.parse(last) - OVERLAP_DAYS * 86_400_000).toISOString()
+          : (o.backfillSinceFor?.[job.id] ?? o.backfillSince));
+      window = cursor ? { since: cursor.since, until: cursor.until } : { since, until: o.now };
+      o.log({ event: "market_start", source: job.id, ...window, offset: cursor?.offset ?? 0 });
+      const run = await job.fetch(cursor ? { ...window, offset: cursor.offset } : window);
+      const ids = await store.saveCaptures(run.captures);
+      let fetched = 0;
+      let inserted = 0;
+      let updated = 0;
+      if (job.id === "usaspending") {
+        const awards = run.records as FederalAward[];
+        fetched = awards.length;
+        ({ inserted, updated } = await store.upsertFederalAwards(awards, ids, o.now));
+      } else if (job.id === "sam-awards") {
+        const actions = run.records as FederalAction[];
+        fetched = actions.length;
+        ({ inserted, updated } = await store.upsertFederalActions(actions, ids, o.now));
+      } else if (job.id === "fl-facts") {
+        const contracts = run.records as StateContract[];
+        fetched = contracts.length;
+        ({ inserted, updated } = await store.upsertStateContracts(contracts, ids, o.now));
+      } else {
+        for (const r of run.records as PaRecords[]) {
+          fetched += r.projects.length + r.applicants.length;
+          const p = await store.upsertPaProjects(r.projects, ids, o.now);
+          const a = await store.upsertPaApplicants(r.applicants, o.now);
+          inserted += p.inserted + a.inserted;
+          updated += p.updated + a.updated;
+        }
+      }
+      await store.recordMarketRun({
+        source: job.id,
+        startedAt: started,
+        finishedAt: new Date().toISOString(),
+        windowSince: window.since,
+        windowUntil: window.until,
+        fetched,
+        inserted,
+        updated,
+        rejected: run.rejected.length,
+        captures: run.captures.length,
+        complete: run.complete,
+        notes: run.notes,
+        error: null,
+        cursor: run.cursor ?? null,
+      });
+      const res: MarketResult = {
+        source: job.id,
+        ok: true,
+        fetched,
+        inserted,
+        updated,
+        rejected: run.rejected.length,
+        complete: run.complete,
+        resuming: Boolean(run.cursor),
+        window,
+        error: null,
+      };
+      out.push(res);
+      o.log({ event: "market", ...res, notes: run.notes, rejectedSample: run.rejected.slice(0, 3) });
+    } catch (err) {
+      const error = describe(err);
+      await store
+        .recordMarketRun({
+          source: job.id,
+          startedAt: started,
+          finishedAt: new Date().toISOString(),
+          windowSince: window?.since ?? null,
+          windowUntil: window?.until ?? null,
+          fetched: 0,
+          inserted: 0,
+          updated: 0,
+          rejected: 0,
+          captures: 0,
+          complete: false,
+          notes: [],
+          error,
+        })
+        .catch((e) => o.log({ event: "market_record_failed", source: job.id, error: (e as Error).message }));
+      out.push({
+        source: job.id,
+        ok: false,
+        fetched: 0,
+        inserted: 0,
+        updated: 0,
+        rejected: 0,
+        complete: false,
+        window,
+        error,
+      });
+      o.log({ event: "market_failed", source: job.id, error });
+    }
+  }
+  return out;
+}
+
+/** Plain-language error; an expired or rejected API key says so (SAM.gov keys expire every 90 days). */
+function describe(err: unknown): string {
+  if (err instanceof HttpError && (err.status === 401 || err.status === 403))
+    return `${err.message}: the API key was rejected (expired or revoked?)`;
+  return ((err as Error)?.message ?? String(err)).slice(0, 500);
+}
+
+/** Problems worth an operator email: failures, rejected rows, and sources gone stale. */
+export async function marketProblems(
+  store: MarketStore,
+  results: MarketResult[],
+  now: string,
+): Promise<string[]> {
+  const problems: string[] = [];
+  for (const r of results) {
+    if (!r.ok) problems.push(`market ${r.source}: failed (${r.error})`);
+    else if (r.rejected >= 5 && r.rejected > (r.fetched + r.rejected) * 0.25)
+      problems.push(`market ${r.source}: ${r.rejected} records could not be read`);
+    if (r.ok && !r.complete && !r.resuming)
+      problems.push(`market ${r.source}: some records were not read (see the run notes)`);
+    const last = await store.lastMarketSuccessAt(r.source).catch(() => null);
+    if (last && Date.parse(now) - Date.parse(last) > MARKET_STALE_AFTER_MS)
+      problems.push(`market ${r.source}: no successful run since ${last.slice(0, 10)}`);
+  }
+  return problems;
+}

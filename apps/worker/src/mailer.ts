@@ -20,6 +20,16 @@ export interface Mailer {
   send(mail: Mail): Promise<{ id: string | null; duplicate?: boolean }>;
 }
 
+/**
+ * Marks every subject from this environment, e.g. "[STAGING]", so a staging email is never mistaken for the
+ * real one. Idempotency keys are untouched. A blank prefix returns the mailer as it is.
+ */
+export function withSubjectPrefix(mailer: Mailer, prefix: string | undefined): Mailer {
+  const p = (prefix ?? "").trim().slice(0, 40);
+  if (!p) return mailer;
+  return { send: (mail) => mailer.send({ ...mail, subject: `${p} ${mail.subject}` }) };
+}
+
 export class ResendMailer implements Mailer {
   constructor(
     private readonly apiKey: string,

@@ -42,16 +42,16 @@ Common rules for all sources:
 
 ## fl-mfmp
 
-|                       |                                                                                                                                                                                                                                                                        |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Owner                 | Florida Department of Management Services, MyFloridaMarketPlace                                                                                                                                                                                                        |
-| Access                | Public "State of Florida Advertisements" search at `vendor.myfloridamarketplace.com/search/bids`, no sign-in. Replaced the legacy Vendor Bid System on March 28, 2022 (the VBS now holds history only)                                                                 |
-| Method                | The same public JSON endpoints the public pages call, verified without cookies on Oct 15, 2026: `POST /mfmp/pub/search/bids` (status OPEN/PREVIEW, 100 per page) and `GET /mfmp/pub/search/bids/detail?id=` for each biddable ad. Both need `Accept: application/json` |
-| Observed              | Oct 15, 2026: 179 OPEN ads across 10 ad types; 134 biddable ads, each with UNSPSC commodity codes, description, contact and a document list                                                                                                                            |
-| Fields used           | List: advertisementId, uniqueName, agencyAdNumber, type, title, dates, status, version, organization. Detail: commodityCodes (UNSPSC), description (HTML converted to text), responseContact, docs (attachmentId, original fileName, description, date)                |
-| Documents             | Referenced, never downloaded by Radar: `/mfmp/bids/detail/attachment/download?attachmentId=` with the original file name kept                                                                                                                                          |
-| Award detection       | Ads stay "OPEN" through their posting window even after an Intent to Award is posted (observed on 3 of 134 biddable ads on Oct 15). When the agency has posted such a document, Radar marks the record awarded so it leaves the bid lane                               |
-| Before commercial use | (1) Read and record the MFMP terms; (2) ask DMS whether a data feed exists for aggregators; (3) run daily for two weeks and compare counts with the public page                                                                                                        |
+|                       |                                                                                                                                                                                                                                                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner                 | Florida Department of Management Services, MyFloridaMarketPlace                                                                                                                                                                                                                                                                             |
+| Access                | Public "State of Florida Advertisements" search at `vendor.myfloridamarketplace.com/search/bids`, no sign-in. Replaced the legacy Vendor Bid System on March 28, 2022 (the VBS now holds history only)                                                                                                                                      |
+| Method                | The same public JSON endpoints the public pages call, verified without cookies on Oct 15, 2026: `POST /mfmp/pub/search/bids` (status OPEN/PREVIEW, 100 per page) and `GET /mfmp/pub/search/bids/detail?id=` for each biddable ad. Both need `Accept: application/json`                                                                      |
+| Observed              | Oct 15, 2026: 179 OPEN ads across 10 ad types; 134 biddable ads, each with UNSPSC commodity codes, description, contact and a document list                                                                                                                                                                                                 |
+| Fields used           | List: advertisementId, uniqueName, agencyAdNumber, type, title, dates, status, version, organization. Detail: commodityCodes (UNSPSC), description (HTML converted to text), responseContact, docs (attachmentId, original fileName, description, date)                                                                                     |
+| Documents             | Referenced, never stored by Radar: `/mfmp/bids/detail/attachment/download?attachmentId=` with the original file name kept. The portal returns the file only to a request with `Accept: application/octet-stream`, so the web app links these through `/docs/mfmp/<id>`, which asks for the file on the viewer's click and passes it through |
+| Award detection       | Ads stay "OPEN" through their posting window even after an Intent to Award is posted (observed on 3 of 134 biddable ads on Oct 15). When the agency has posted such a document, Radar marks the record awarded so it leaves the bid lane                                                                                                    |
+| Before commercial use | (1) Read and record the MFMP terms; (2) ask DMS whether a data feed exists for aggregators; (3) run daily for two weeks and compare counts with the public page                                                                                                                                                                             |
 
 ## opengov
 
@@ -100,3 +100,75 @@ Common rules for all sources:
 | Access | OpenFEMA API, `DisasterDeclarationsSummaries` v2, no key                                                 |
 | Basis  | Official open-data API                                                                                   |
 | Use    | Demand signal only: new declarations with Public Assistance predict recovery and consulting procurements |
+
+---
+
+# Market data (Flight Deck Market Intelligence)
+
+Public award data, stored in the `market` schema, separate from opportunities. Collectors never create notices
+or alerts. Every raw response is kept (compressed, `market.captures`) and each record points at the capture it
+came from, so any figure can show its source and date. Same rules as above: official APIs and public pages only,
+no logins, identified and paced requests.
+
+## usaspending
+
+|             |                                                                                                                                                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Owner       | U.S. Department of the Treasury (USAspending.gov; data from FPDS / SAM.gov)                                                                                                                                                                      |
+| Access      | `POST https://api.usaspending.gov/api/v2/search/spending_by_award/`, no key. Verified live Oct 31, 2026                                                                                                                                          |
+| Basis       | Official open-data API                                                                                                                                                                                                                           |
+| Scope       | Contract awards (types A–D) with place of performance in `RADAR_MARKET_STATES`, NAICS in `RADAR_MARKET_NAICS`                                                                                                                                    |
+| Fields used | Award ID, recipient name and UEI, award amount (obligated to date), start/end dates, awarding agency and sub-agency, award type, NAICS, PSC, place of performance state, description, last modified, internal award id (for the award page link) |
+| Limits      | 100 rows per page and a 10,000-row ceiling per query: windows are split by month and state; a month at the ceiling is marked incomplete and reported                                                                                             |
+| Gotchas     | `country` must be `"USA"` (`"US"` returns nothing); unknown filter keys are ignored silently, so filters are pinned by tests                                                                                                                     |
+
+## usaspending-detail
+
+|             |                                                                                                                                                                        |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner       | U.S. Department of the Treasury (USAspending.gov)                                                                                                                      |
+| Access      | `GET https://api.usaspending.gov/api/v2/awards/<generated_unique_award_id>/`, no key. Verified live Oct 31, 2026                                                       |
+| Basis       | Official open-data API                                                                                                                                                 |
+| Fields used | Number of offers received, extent competed, set-aside, solicitation number, pricing type, base + all options value, total obligation, potential end date, parent award |
+| Pace        | One request per award that is new or changed since its details were read; capped per run (`RADAR_MARKET_DETAIL_MAX`, default 1,000)                                    |
+| Why not SAM | The SAM.gov Contract Awards API has the same FPDS fields but allows a personal key 10 requests a day, shared with every other SAM call on that key                     |
+
+## sam-awards
+
+|        |                                                                                                                                                                                                                                                                                                                                                                        |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner  | GSA (SAM.gov Contract Awards API, the FPDS replacement since 2026)                                                                                                                                                                                                                                                                                                     |
+| Access | `GET https://api.sam.gov/contract-awards/v1/search`, SAM.gov public API key (`SAM_API_KEY`, same as the opportunity connector; personal keys expire every 90 days)                                                                                                                                                                                                     |
+| Basis  | Official API                                                                                                                                                                                                                                                                                                                                                           |
+| Scope  | Contract actions (awards and modifications) modified in the window, place of performance in `RADAR_MARKET_STATES`, NAICS in `RADAR_MARKET_NAICS`                                                                                                                                                                                                                       |
+| Budget | The key's daily quota is shared across SAM APIs: 10 requests a day for a personal key without a SAM.gov role, 1,000 with one. Each run makes at most `RADAR_SAM_AWARDS_MAX_REQUESTS` (default 2), stops on 429, and leaves a cursor so the next run resumes the same window. First run starts 14 days back (`RADAR_SAM_AWARDS_SINCE`); USAspending carries the history |
+| Status | Built from GSA's documentation (parameter names, response paths); the first staging run confirms the live shape. Records that don't match are rejected and counted, not guessed                                                                                                                                                                                        |
+
+## openfema-pa
+
+|             |                                                                                                                                                |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner       | FEMA                                                                                                                                           |
+| Access      | OpenFEMA `v2/PublicAssistanceFundedProjectsDetails` and `v1/PublicAssistanceApplicants`, no key. Verified live Oct 31, 2026                    |
+| Basis       | Official open-data API                                                                                                                         |
+| Scope       | Every Public Assistance project in the tracked states (all damage categories; A = debris removal), plus applicant names                        |
+| Use         | Demand signal: who spent disaster money on what, by county. Names no contractors                                                               |
+| Incremental | Filter `lastRefresh ge <last window end − 3 days>`; FEMA reloads applicants whole each day, so applicant pages are de-duplicated by their rows |
+| Gotchas     | The v1 projects endpoint is gone; projects filter on `stateAbbreviation`, applicants on the full state name (`state eq 'Florida'`)             |
+
+## fl-facts
+
+|             |                                                                                                                                                                                                                                                                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Owner       | Florida Department of Financial Services (FACTS, the Florida Accountability Contract Tracking System)                                                                                                                                                                                                                                                        |
+| Access      | `https://facts.fldfs.com/Search/ContractSearch.aspx`, no key, no API: the ASP.NET search form, then its CSV export (needs the session cookie). Verified live Nov 1, 2026                                                                                                                                                                                     |
+| Basis       | Public search; the terms of use (`Search/SearchTerms.aspx`) place no limit on automated access; no robots.txt. One request at a time, 2 seconds apart, once a week                                                                                                                                                                                           |
+| Scope       | Agreements that began on or after `RADAR_FACTS_BEGIN_SINCE` (default `RADAR_MARKET_SINCE`) at the agencies in `RADAR_FACTS_AGENCIES` (default: Governor's office incl. Emergency Management, DEP, DOT, DMS, Commerce, Agriculture, Military Affairs, Health), kinds in `RADAR_FACTS_KINDS` (default `contracts,grants`; `purchase-orders` adds ~9× the rows) |
+| Fields used | Agency, vendor, type, agency contract / grant / PO id, FLAIR id, titles, status, original and total amount, commodity code, method of procurement (incl. emergency procurement under executive order), state term contract, begin / end / new end / execution dates, recipient type, CFDA / CSFA                                                             |
+| Incremental | None: FACTS has no change date, so each weekly run re-reads the scope and only changed rows are written (`RADAR_FACTS_INTERVAL_DAYS`, default 7)                                                                                                                                                                                                             |
+| Gotchas     | Free-text fields contain unescaped quotes (parser is lenient); typed dates include typos (7/1/2107, 9/9/9999), stored as unknown; a few agreements repeat agency/type/id (FLAIR id disambiguates); the export without the session cookie returns the search page, which is reported as a failure                                                             |
+
+## Planned (not yet collected)
+
+- **Texas LBB Contracts Database**: the public site is a Dash app; its "Download Data" export needs to be confirmed as an allowed, stable route first.
+- **TxDOT bid tabulations**, **ESBD awards**, **MFMP Agency Decisions**: see the Flight Deck spec, Section 8.

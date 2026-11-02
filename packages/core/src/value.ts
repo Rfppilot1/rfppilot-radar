@@ -9,6 +9,19 @@ export function parseMoney(raw: string | number | null | undefined): number | nu
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/**
+ * Smallest amount treated as a real contract value. Agencies fill required value fields with placeholders
+ * ($0.01, $1, $100), which would otherwise show as "$0" or "$1" contracts and skew market totals. The same floor
+ * applies to values read from posting text.
+ */
+export const MIN_CONTRACT_VALUE = 1000;
+
+/** An agency's stated estimate, or null when it is missing, zero or a placeholder under MIN_CONTRACT_VALUE. */
+export function parseEstimate(raw: string | number | null | undefined): number | null {
+  const n = parseMoney(raw);
+  return n !== null && n >= MIN_CONTRACT_VALUE ? n : null;
+}
+
 const VALUE_CUE =
   /\b(estimated|anticipated|approximate(ly)?|total|maximum|not[- ]to[- ]exceed|budget(ed)?|funding|available funds|contract value|award amount)\b/i;
 // Dollar amounts in these sentences are about something else (bonds, insurance, fees, penalties).
@@ -33,7 +46,7 @@ export function valueFromText(text: string | null | undefined): Value | null {
     if (unit === "million" || unit === "m" || unit === "mm") amount *= 1_000_000;
     else if (unit === "billion") amount *= 1_000_000_000;
     else if (unit === "k") amount *= 1_000;
-    if (!Number.isFinite(amount) || amount < 1000) continue;
+    if (!Number.isFinite(amount) || amount < MIN_CONTRACT_VALUE) continue;
     return { amount, basis: "posting_text", text: s.trim().slice(0, 240) };
   }
   return null;

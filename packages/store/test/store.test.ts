@@ -422,6 +422,11 @@ describe.each(impls)("%s repository", (_name, make) => {
     await repo.recordRun(run("2026-10-13T10:00:00.000Z", true));
     await repo.recordRun(run("2026-10-14T10:00:00.000Z", false));
     expect(await repo.lastCompleteRunAt("tx-esbd")).toBe("2026-10-13T10:00:00.000Z");
+    // Error-free runs count for windowed sources, complete or not; a failed run does not.
+    expect(await repo.lastSuccessfulRunAt("tx-esbd")).toBe("2026-10-14T10:00:00.000Z");
+    await repo.recordRun({ ...run("2026-10-15T10:00:00.000Z", false), error: "HTTP 503" });
+    expect(await repo.lastSuccessfulRunAt("tx-esbd")).toBe("2026-10-14T10:00:00.000Z");
+    expect(await repo.lastSuccessfulRunAt("sam-gov")).toBeNull();
   });
 
   it("returns every row when asked for all, past the default cap of 500", async () => {
@@ -565,6 +570,10 @@ describe("postgres transactions", () => {
       "001_init.sql",
       "002_versions_seen_idx.sql",
       "003_deliveries.sql",
+      "004_market.sql",
+      "005_market_award_detail.sql",
+      "006_market_cursor.sql",
+      "007_market_state_contracts.sql",
     ]);
     expect(await migrate(db as never)).toEqual([]);
   });

@@ -11,6 +11,14 @@ import {
   HttpFlTransport,
   SamGovConnector,
   TxEsbdConnector,
+  OpenFemaPaCollector,
+  FlFactsCollector,
+  DEFAULT_FACTS_AGENCIES,
+  DEFAULT_FACTS_KINDS,
+  type FactsKind,
+  UsaspendingCollector,
+  UsaspendingDetailCollector,
+  SamAwardsCollector,
   TX_DETAIL_VERSION,
   normalizeFlAd,
   normalizeSam,
@@ -26,8 +34,11 @@ import {
   type SourceId,
 } from "@radar/core";
 import {
+  MemoryMarketStore,
   MemoryRepository,
+  PostgresMarketStore,
   PostgresRepository,
+  type MarketStore,
   buildDigest,
   FEDERAL_MIN_SCORE,
   ingestRun,
@@ -47,7 +58,8 @@ import {
   type ProfileResult,
   type SourceResult,
 } from "./daily.js";
-import { ResendMailer, parseRecipients, type Mailer } from "./mailer.js";
+import { ResendMailer, parseRecipients, withSubjectPrefix, type Mailer } from "./mailer.js";
+import { collectMarket, marketProblems, type MarketJob, type MarketResult } from "./market.js";
 import { recentSignals } from "./signals.js";
 
 /**
@@ -60,23 +72,140 @@ import { recentSignals } from "./signals.js";
  *   radar digest --tenant T --profile P [--since ISO] [--format text|markdown|json] [--out file]
  *   radar daily [--out-dir data/digests] [--profiles a.json,b.json] [--imports src=file.json,...] [--sources none]
  *                                                  ingest + score + one digest per profile
+ *                                                  (+ market collection when RADAR_MARKET_COLLECT=1)
+ *   radar market [--market-sources usaspending,usaspending-detail,sam-awards,openfema-pa,fl-facts] [--since ISO]
+ *                                                  collect public award data for Flight Deck
  */
 const USER_AGENT = process.env.RADAR_USER_AGENT ?? "RFPPilotRadar/0.1 (+https://rfppilot.com)";
 
-async function openRepo(): Promise<Repository> {
+async function openRepo(): Promise<{ repo: Repository; market: MarketStore }> {
   if (process.env.DATABASE_URL) {
     const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 4 });
     // An idle pooled connection that drops emits "error"; log it instead of crashing the run.
     pool.on("error", (err) => log({ event: "db_connection_error", error: err.message }));
     await migrate(pool);
-    return new PostgresRepository(pool);
+    return { repo: new PostgresRepository(pool), market: new PostgresMarketStore(pool) };
   }
   if (process.env.RADAR_ALLOW_MEMORY !== "1") {
     throw new Error(
       "DATABASE_URL is not set. Set RADAR_ALLOW_MEMORY=1 to run against a throwaway in-memory store.",
     );
   }
-  return new MemoryRepository();
+  return { repo: new MemoryRepository(), market: new MemoryMarketStore() };
+}
+
+/**
+ * NAICS codes pulled from USAspending when RADAR_MARKET_NAICS is not set: the IT/IV&V, consulting and planning
+ * work the pilot profiles bid, plus disaster debris, monitoring and recovery.
+ */
+const DEFAULT_MARKET_NAICS = [
+  "541511",
+  "541512",
+  "541513",
+  "541519",
+  "518210", // IT services, IV&V, hosting
+  "541611",
+  "541618",
+  "541690",
+  "541990",
+  "561110", // management and other consulting, office admin
+  "541320",
+  "541330",
+  "541620", // planning, engineering, environmental consulting
+  "562111",
+  "562119",
+  "562910",
+  "562998",
+  "238910", // debris collection and removal, remediation, site prep
+  "624230",
+  "561990", // emergency relief, other support services
+];
+
+function marketJobs(sources: string[]): MarketJob[] {
+  const http = new HttpClient({ userAgent: USER_AGENT, minIntervalMs: 1000, timeoutMs: 90_000 });
+  const states = (process.env.RADAR_MARKET_STATES ?? "FL,TX")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const jobs: MarketJob[] = [];
+  for (const s of sources) {
+    if (s === "usaspending")
+      jobs.push(
+        new UsaspendingCollector({
+          http,
+          states,
+          naics: (process.env.RADAR_MARKET_NAICS ?? DEFAULT_MARKET_NAICS.join(","))
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean),
+        }),
+      );
+    else if (s === "usaspending-detail") jobs.push(new UsaspendingDetailCollector({ http }));
+    else if (s === "sam-awards") {
+      if (!process.env.SAM_API_KEY) {
+        log({ event: "market_skipped", source: s, reason: "SAM_API_KEY is not set" });
+        continue;
+      }
+      jobs.push(
+        new SamAwardsCollector({
+          http,
+          apiKey: process.env.SAM_API_KEY,
+          states,
+          naics: (process.env.RADAR_MARKET_NAICS ?? DEFAULT_MARKET_NAICS.join(","))
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean),
+          // The key's daily quota is shared with the opportunity pull and anything else using it: 10 a day for a
+          // personal key without a SAM.gov role, 1,000 with one. Raise this only if the key has a role.
+          maxRequests: Number(process.env.RADAR_SAM_AWARDS_MAX_REQUESTS ?? 2),
+        }),
+      );
+    } else if (s === "openfema-pa") jobs.push(new OpenFemaPaCollector({ http, states }));
+    else if (s === "fl-facts") {
+      // Its own client: FACTS needs a session cookie and its exports run to tens of megabytes.
+      const facts = new FlFactsCollector({
+        http: new HttpClient({
+          userAgent: USER_AGENT,
+          minIntervalMs: 2000,
+          timeoutMs: 300_000,
+          maxBytes: 150 * 1024 * 1024,
+          cookies: true,
+        }),
+        agencies: (process.env.RADAR_FACTS_AGENCIES ?? DEFAULT_FACTS_AGENCIES.join(","))
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean),
+        kinds: (process.env.RADAR_FACTS_KINDS ?? DEFAULT_FACTS_KINDS.join(","))
+          .split(",")
+          .map((x) => x.trim() as FactsKind)
+          .filter((x) => ["contracts", "grants", "purchase-orders"].includes(x)),
+        beginSince: process.env.RADAR_FACTS_BEGIN_SINCE ?? MARKET_SINCE,
+      });
+      jobs.push(
+        Object.assign(facts, { minIntervalDays: Number(process.env.RADAR_FACTS_INTERVAL_DAYS ?? 7) }),
+      );
+    } else throw new Error(`Unknown market source: ${s}`);
+  }
+  return jobs;
+}
+
+/** First collection starts here (RADAR_MARKET_SINCE), then each run continues from the last. Default: FY2024. */
+const MARKET_SINCE = process.env.RADAR_MARKET_SINCE ?? "2023-10-01T00:00:00.000Z";
+
+async function market(store: MarketStore, sources: string[], since?: string): Promise<MarketResult[]> {
+  return collectMarket(store, marketJobs(sources), {
+    log,
+    now: new Date().toISOString(),
+    backfillSince: MARKET_SINCE,
+    // SAM.gov's request budget is tiny, and USAspending already carries the history: start SAM 14 days back.
+    backfillSinceFor: {
+      "sam-awards":
+        process.env.RADAR_SAM_AWARDS_SINCE ?? new Date(Date.now() - 14 * 86_400_000).toISOString(),
+    },
+    since,
+    // Award detail requests per run (one request each). The backlog after the first backfill clears over a few runs.
+    detailMax: Number(process.env.RADAR_MARKET_DETAIL_MAX ?? 1000),
+  });
 }
 
 /** Minutes a single source may run before it is stopped (its fetched records are kept). Default 45. */
@@ -245,6 +374,7 @@ process.on("unhandledRejection", (err) => {
 
 async function daily(
   repo: Repository,
+  marketStore: MarketStore,
   values: { profiles?: string; imports?: string; signals?: string; "out-dir"?: string },
   sources: SourceId[],
   max: number | undefined,
@@ -271,7 +401,10 @@ async function daily(
   const now = new Date().toISOString();
   const mailer: Mailer | null =
     process.env.RESEND_API_KEY && process.env.RADAR_EMAIL_FROM
-      ? new ResendMailer(process.env.RESEND_API_KEY, process.env.RADAR_EMAIL_FROM)
+      ? withSubjectPrefix(
+          new ResendMailer(process.env.RESEND_API_KEY, process.env.RADAR_EMAIL_FROM),
+          process.env.RADAR_SUBJECT_PREFIX,
+        )
       : null;
   // Test send: RADAR_TEST_RECIPIENT gets the email instead of the real recipients, the subject is marked
   // [TEST], and nothing is recorded as delivered, so the real recipients' next email is unchanged.
@@ -323,8 +456,23 @@ async function daily(
     },
   });
 
+  // Public award data for Flight Deck, after the customer-facing work so it can never delay a digest.
+  const marketResults =
+    process.env.RADAR_MARKET_COLLECT === "1"
+      ? await market(
+          marketStore,
+          (
+            process.env.RADAR_MARKET_SOURCES ??
+            "usaspending,usaspending-detail,sam-awards,openfema-pa,fl-facts"
+          ).split(","),
+        )
+      : [];
+
   // Health check: one email to the operator (RADAR_ALERT_EMAIL) listing anything that went wrong.
-  const problems = await healthProblems(repo, sourceResults, [...scoreResults, ...digestResults], now);
+  const problems = [
+    ...(await healthProblems(repo, sourceResults, [...scoreResults, ...digestResults], now)),
+    ...(await marketProblems(marketStore, marketResults, now)),
+  ];
   await sendAlert({ mailer, to: process.env.RADAR_ALERT_EMAIL?.trim() || null, log, now }, problems);
   // A customer-facing failure (a profile not scored or not emailed) fails the run, so the scheduler shows it.
   if ([...scoreResults, ...digestResults].some((r) => !r.ok)) process.exitCode = 1;
@@ -347,10 +495,11 @@ async function main() {
       profiles: { type: "string" },
       imports: { type: "string" },
       signals: { type: "string" },
+      "market-sources": { type: "string" },
     },
   });
   const [cmd, sub, arg] = positionals;
-  const repo = await openRepo();
+  const { repo, market: marketStore } = await openRepo();
   try {
     const sources = (values.sources ?? "tx-esbd,fl-mfmp,opengov,bonfire,vendorlink,sam-gov").split(
       ",",
@@ -393,9 +542,20 @@ async function main() {
       if (values.out) await writeFile(values.out, out);
       else process.stdout.write(`${out}\n`);
     } else if (cmd === "daily") {
-      await withWorkerLock(repo, () => daily(repo, values, sources, max));
+      await withWorkerLock(repo, () => daily(repo, marketStore, values, sources, max));
+    } else if (cmd === "market") {
+      await withWorkerLock(repo, async () => {
+        const results = await market(
+          marketStore,
+          (
+            values["market-sources"] ?? "usaspending,usaspending-detail,sam-awards,openfema-pa,fl-facts"
+          ).split(","),
+          values.since,
+        );
+        if (results.some((r) => !r.ok)) process.exitCode = 1;
+      });
     } else {
-      process.stderr.write("Usage: radar <profile load|ingest|import|score|digest|daily> [options]\n");
+      process.stderr.write("Usage: radar <profile load|ingest|import|score|digest|daily|market> [options]\n");
       process.exitCode = 2;
     }
   } finally {

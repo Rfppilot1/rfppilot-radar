@@ -19,6 +19,12 @@ export interface ConnectorRun {
    */
   complete: boolean;
   /**
+   * True for sources queried by a posted-date window (SAM.gov). Such a run never sees the full open list, so it is
+   * never `complete` and never closes records by absence; that is expected, not a problem. Health checks judge
+   * these sources by their last error-free run instead.
+   */
+  windowed?: boolean;
+  /**
    * Records this run could only fetch partially (e.g. a Florida ad whose detail request failed). The pipeline
    * keeps the stored version of these instead of overwriting richer data with a thinner copy.
    */

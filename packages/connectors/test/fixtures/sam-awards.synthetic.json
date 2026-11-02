@@ -1,0 +1,36 @@
+{
+  "totalRecords": 2,
+  "limit": 100,
+  "offset": 0,
+  "awardSummary": [
+    {
+      "contractId": { "piid": "70FA3025C00000012", "modificationNumber": "0", "referencedIDVPiid": null },
+      "coreData": {
+        "federalOrganization": {
+          "contractingInformation": {
+            "contractingDepartment": { "code": "7000", "name": "HOMELAND SECURITY, DEPARTMENT OF" },
+            "contractingOffice": { "code": "70FA30", "name": "FEMA REGION IV" }
+          }
+        },
+        "productOrServiceInformation": {
+          "principalNaics": [{ "code": "562119", "name": "OTHER WASTE COLLECTION" }],
+          "productOrService": { "code": "S205", "name": "TRASH/GARBAGE COLLECTION" }
+        },
+        "principalPlaceOfPerformance": { "state": { "code": "FL", "name": "FLORIDA" } },
+        "competitionInformation": { "extentCompeted": { "code": "A", "name": "FULL AND OPEN COMPETITION" } },
+        "solicitationId": "70FA3025R00000003"
+      },
+      "awardDetails": {
+        "dates": { "dateSigned": "2025-09-12", "currentCompletionDate": "2026-09-11", "ultimateCompletionDate": "2029-09-11" },
+        "dollars": { "actionObligation": "250000.00", "baseAndAllOptionsValue": "4800000.00" },
+        "totalContractDollars": { "totalActionObligation": "250000.00" },
+        "competitionInformation": { "numberOfOffersReceived": "6" },
+        "awardeeData": {
+          "awardeeHeader": { "awardeeName": "GULF COAST DEBRIS LLC" },
+          "awardeeUEIInformation": { "uniqueEntityId": "ZZZZ11112222" }
+        }
+      }
+    },
+    { "contractId": { "modificationNumber": "1" } }
+  ]
+}

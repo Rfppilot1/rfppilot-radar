@@ -276,6 +276,7 @@ describe("daily run: health check", () => {
     closed: 0,
     rejected: 0,
     complete: true,
+    windowed: false,
     closeRefused: false,
     deadlineHit: false,
     error: null,
@@ -319,6 +320,31 @@ describe("daily run: health check", () => {
       "isf/isf-main: digest failed (email failed)",
     ]);
     expect(await healthProblems(repo, [ok({})], [], DAY2)).toEqual([]);
+  });
+
+  it("does not flag SAM.gov for never completing, only for no successful run in four days", async () => {
+    const repo = new MemoryRepository();
+    const sam = { ...ok({ source: "sam-gov" }), complete: false, windowed: true };
+    const record = (finishedAt: string, error: string | null) =>
+      repo.recordRun({
+        source: "sam-gov",
+        startedAt: finishedAt,
+        finishedAt,
+        fetched: error ? 0 : 50,
+        inserted: 0,
+        updated: 0,
+        closed: 0,
+        rejected: 0,
+        complete: false,
+        error,
+      });
+    await record(DAY2, null);
+    expect(await healthProblems(repo, [sam], [], DAY2)).toEqual([]);
+    const later = new Date(Date.parse(DAY2) + 5 * 86_400_000).toISOString();
+    await record(later, "HTTP 500");
+    expect(await healthProblems(repo, [sam], [], later)).toEqual([
+      `sam-gov: no successful run since ${DAY2.slice(0, 10)}`,
+    ]);
   });
 
   it("emails the operator only when something is wrong", async () => {

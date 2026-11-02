@@ -1,6 +1,7 @@
 import {
   Opportunity,
   extractKeyDates,
+  isLocalBuyerName,
   valueFromText,
   isIntel,
   type ClassificationCode,
@@ -86,8 +87,8 @@ export const FlDetail = z
   .passthrough();
 export type FlDetail = z.infer<typeof FlDetail>;
 
-/** Bump when the parser reads new fields from the same payloads. 2 = estimated value from the description. */
-export const FL_PARSE_VERSION = 2;
+/** Bump when the parser reads new fields from the same payloads. 2 = estimated value from the description; 3 = local buyers. */
+export const FL_PARSE_VERSION = 3;
 
 /** Ad types exactly as listed in the portal's "Ad Type" filter. */
 export const FL_AD_TYPES: Record<string, NoticeKind> = {
@@ -225,7 +226,8 @@ export function normalizeFlAd(raw: unknown, fetchedAt: string, detailRaw?: unkno
     buyer: {
       name: buyerName,
       id: ad.organization?.organizationId != null ? String(ad.organization.organizationId) : null,
-      level: "state",
+      // The portal mixes state agencies with cities, counties and school districts that post there too.
+      level: isLocalBuyerName(buyerName) ? "local" : "state",
     },
     state: "FL",
     postedAt: toIso(ad.publishDate ?? ad.openDate ?? null),

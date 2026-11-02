@@ -14,7 +14,8 @@
   "scripts": {
     "build": "tsc -b",
     "start": "node dist/server.js",
-    "dev": "tsx --conditions=radar-src src/server.ts"
+    "dev": "tsx --conditions=radar-src src/server.ts",
+    "demo": "tsx --conditions=radar-src scripts/demo-server.ts"
   },
   "dependencies": {
     "@radar/core": "workspace:*",

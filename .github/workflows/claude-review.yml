@@ -22,10 +22,17 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
           prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
             Review this pull request for RFP Pilot Radar as an acquisition-diligence reviewer.
             Read SECURITY.md, docs/ARCHITECTURE.md and docs/SOURCES.md first.
             Report only real defects, most severe first: tenant isolation or auth gaps, correctness bugs in
             scoring, digests or connectors, data-provenance or source-terms problems, missing tests for changed
             behavior, and docs that no longer match the code. Give file:line, a concrete failure scenario and a fix.
             Skip style nits. If there are no real defects, say so in one line.
+            Post the result on the pull request: inline comments (create_inline_comment) for specific lines, and one
+            summary comment with `gh pr comment`.

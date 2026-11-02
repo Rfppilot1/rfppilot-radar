@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased: Florida state contracts (FACTS)
+
+- **New collector `fl-facts`:** Florida agency contracts and grant agreements from FACTS (Department of Financial Services): vendor, agency, amounts (original and current total), commodity, method of procurement (including emergency procurements under executive orders), state term contract, begin and end dates. Default agencies: Governor's office (Emergency Management), DEP, DOT, DMS, Commerce, Agriculture, Military Affairs, Health.
+- FACTS has no API: the collector uses the public search form and its CSV export with a session cookie (new optional cookie support in the HTTP client, off for every other source). Runs weekly; each run re-reads agreements that began since `RADAR_FACTS_BEGIN_SINCE` and writes only changed rows (migration 007, `market.state_contracts`).
+- Weekly sources: a market job can set a minimum interval; skipped runs are logged, not recorded, and don't alert.
+
+## Unreleased: SAM.gov contract awards
+
+- **New collector `sam-awards`:** contract actions from SAM.gov's Contract Awards API (the FPDS replacement) for Florida and Texas and the tracked NAICS codes: awardee and UEI, contracting office, obligation, ceiling, completion dates, offers received, competition, solicitation number. Uses the existing `SAM_API_KEY`.
+- **Respects the shared quota:** at most `RADAR_SAM_AWARDS_MAX_REQUESTS` per run (default 2), stops on 429, and saves a cursor so the next run resumes the same window (`market.runs.cursor`, migration 006). Planned stops don't trigger alerts.
+- Starts 14 days back (`RADAR_SAM_AWARDS_SINCE`); USAspending already covers the history.
+
+## Unreleased: Award competition details
+
+- **New collector `usaspending-detail`:** for each federal award that is new or changed, reads how many offers were received, how it was competed (full and open, set-aside, sole source), the solicitation number, the ceiling (base + all options) and the potential end date with options. One request per award, capped per run (`RADAR_MARKET_DETAIL_MAX`, default 1,000); runs after the award search. Migration 005 adds the columns.
+- Used instead of the SAM.gov Contract Awards API: same FPDS data, without SAM's 10-requests-a-day limit on personal keys.
+
+## Unreleased: Market data collection (Flight Deck)
+
+- **New: public award data for Flight Deck's Market Intelligence.** Two collectors, both official open APIs with no key, verified against live responses on Oct 31, 2026:
+  - **USAspending** federal contract awards performed in Florida and Texas, for the NAICS codes the pilot profiles bid plus disaster debris and recovery: recipient, UEI, obligated amount, start and end dates (for recompetes), agency, NAICS/PSC.
+  - **FEMA Public Assistance** projects and applicant names for Florida and Texas: disaster spending by county and category (A = debris removal).
+- Stored in a separate `market` schema (migration 004): raw responses kept compressed and de-duplicated, every record linked to the response it came from, and a run log. Nothing touches opportunities, matches or digests (ADR 0004).
+- `radar market` runs it by hand; `RADAR_MARKET_COLLECT=1` runs it after the daily digests. Each run picks up where the last complete one ended (3-day overlap); the first run backfills from `RADAR_MARKET_SINCE` (default Oct 1, 2023). Failures, incomplete windows and stale sources go into the operator alert; a rejected API key is named as such.
+
+## Unreleased: Fixes from the Oct 30 test batch
+
+- **Florida documents open.** MyFloridaMarketPlace returns an attachment only when the request asks for a file; a plain link opened the portal's web app. The web app now links Florida documents through `/docs/mfmp/<attachmentId>`, which asks MFMP for the file and passes it through (numeric ids only, MFMP's download address only, behind the staging password, unexpected types served as downloads).
+- **No more "$0" or "$1" contracts.** Agencies fill required value fields with placeholders ($0.01, $1.00). Agency estimates under $1,000 now count as not stated (`parseEstimate`, `MIN_CONTRACT_VALUE`), so they no longer show on cards or inflate Market totals. Texas detail version 3 re-reads stored postings once; the web app also hides placeholders on notices stored before this change.
+- **Local buyers on MFMP are local.** Cities, towns, counties, school districts, local authorities and county officers that post on MFMP (e.g. Town of Orange Park) were labelled statewide. They are now `local` and placed in their county (Orange Park and Green Cove Springs added to Clay County). Florida parse version 3 re-stores records once.
+- **SAM.gov no longer looks broken.** SAM is queried by posted-date window, so its runs are never `complete` by design. Runs now say `windowed: true`, and the health check judges SAM by its last error-free run (`lastSuccessfulRunAt`) instead of its last complete run.
+
 ## Unreleased: Reliable daily run
 
 - **One failure no longer stops the run.** Each profile is scored and emailed on its own: a failing profile is reported and every other customer still gets their email. The run exits non-zero when any customer-facing step failed, so the scheduler shows it.

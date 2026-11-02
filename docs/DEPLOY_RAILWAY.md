@@ -44,6 +44,7 @@ password never appears in this repo.
 | `RADAR_ALERT_EMAIL`         |     | ✓      | Operator address for the after-run problem list, e.g. `ben@rfppilot.com`                                               |
 | `RADAR_SOURCE_DEADLINE_MIN` |     | ✓      | Optional. Minutes one source may run before it is stopped (default 45); what it fetched is kept                        |
 | `RADAR_USER_AGENT`          |     | ✓      | `RFPPilotRadar/0.1 (+https://rfppilot.com; ben@rfppilot.com)`                                                          |
+| `RADAR_MARKET_COLLECT`      |     | ✓      | Optional. `1` collects public award data for Flight Deck after the digests (see "Market data" below)                   |
 
 Never paste these values into chat, email, issues or code.
 
@@ -70,3 +71,42 @@ overwritten the next morning. Change targeting in the file instead until tenants
 
 Hobby plan plus usage: roughly $5–20/month for the API, a daily cron and a small Postgres. Claude reviewer:
 up to 50 short calls per day. Resend: free tier covers a few hundred emails a month.
+
+## Web prototype (staging only)
+
+A third service, `radar-web`, runs the website in `apps/web`.
+
+1. New service from the repo, branch `staging`, Dockerfile path `apps/web/Dockerfile`, health check `/` is not
+   used (the page needs the password); leave it off or point it at the default.
+2. Variables: `RADAR_API_URL` (the staging API's URL), `RADAR_API_KEY`, `RADAR_PROFILE_ID=isf-main`,
+   `WEB_PASSWORD`. On the staging API, add the same key to `RADAR_API_KEYS` as `isf:<key>`.
+3. Generate a public domain. Share the URL and password only with people testing.
+
+## Staging daily run (operator email only)
+
+The staging worker runs on its own schedule, `15 11 * * 1-5` (7:15 AM Eastern in daylight time), 30 minutes
+after production so the two never hit the sources at the same moment. It loads bids and emails only the
+addresses in its own `RADAR_RECIPIENTS` (today `isf/isf-main=ben@rfppilot.com`). Every subject starts with
+`[STAGING]` (`RADAR_SUBJECT_PREFIX`). To add a reader, append the address to that variable.
+
+## Market data (Flight Deck)
+
+The worker can collect public award data (USAspending federal contracts, FEMA Public Assistance) into the `market`
+schema. It runs after the digests, so it never delays an email, and a failure only adds a line to the operator alert.
+
+- Turn it on: set `RADAR_MARKET_COLLECT=1` on the worker. The migration creates the tables on the next start.
+- The first run backfills from `RADAR_MARKET_SINCE` (default `2023-10-01`); it can take 30–60 minutes. Later runs
+  pick up where the last complete run ended, with a 3-day overlap.
+- Optional: `RADAR_MARKET_STATES` (default `FL,TX`), `RADAR_MARKET_NAICS` (default: IT/IV&V, consulting, planning,
+  engineering, debris and recovery codes; see `DEFAULT_MARKET_NAICS` in `apps/worker/src/cli.ts`),
+  `RADAR_MARKET_SOURCES` (default `usaspending,usaspending-detail,sam-awards,openfema-pa,fl-facts`), `RADAR_MARKET_DETAIL_MAX` (award
+  detail requests per run, default 1,000; the backlog from the first backfill clears over several runs).
+- To run it once by hand: `node apps/worker/dist/cli.js market` (or `pnpm --filter @radar/worker exec radar market`).
+- SAM.gov contract awards use the worker's existing `SAM_API_KEY` and at most `RADAR_SAM_AWARDS_MAX_REQUESTS`
+  requests per run (default 2), because a personal key without a SAM.gov role gets 10 requests a day across all SAM
+  APIs. If the key has a role (1,000 a day), raise it, e.g. to `50`. When the key expires (every 90 days), the
+  operator alert says the key was rejected.
+- Florida FACTS state contracts (`fl-facts`) run once a week (`RADAR_FACTS_INTERVAL_DAYS`, default 7) because FACTS has
+  no change date and each run re-reads its scope (a few minutes per agency). Optional: `RADAR_FACTS_AGENCIES` (six-digit
+  agency codes from the FACTS dropdown), `RADAR_FACTS_KINDS` (`contracts,grants`; add `purchase-orders` for small buys,
+  about 9× the volume), `RADAR_FACTS_BEGIN_SINCE` (default `RADAR_MARKET_SINCE`).

@@ -127,6 +127,8 @@ export interface Repository {
   recordRun(run: IngestRunRecord): Promise<void>;
   /** Finish time of the source's latest complete run, or null if it never had one. */
   lastCompleteRunAt(source: string): Promise<string | null>;
+  /** Finish time of the source's latest run that ended without an error, complete or not. */
+  lastSuccessfulRunAt(source: string): Promise<string | null>;
 
   /**
    * Takes the named worker lock without waiting, or returns null when another process holds it. Keeps two

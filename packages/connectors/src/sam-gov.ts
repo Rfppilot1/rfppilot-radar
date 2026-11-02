@@ -186,6 +186,7 @@ export class SamGovConnector implements SourceConnector {
       rejected: [],
       fetchedAt,
       complete: false,
+      windowed: true,
     };
     const to = new Date(fetchedAt);
     const from = window.since

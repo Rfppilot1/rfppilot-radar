@@ -93,3 +93,27 @@ function titleIfShouting(s: string): string {
     })
     .join("");
 }
+
+/**
+ * True when a buyer name is plainly a local government: a city, town, village, county, school district, local
+ * authority or county constitutional officer. Used for portals that list local buyers alongside state agencies
+ * without saying which is which (MyFloridaMarketPlace lists e.g. "Town of Orange Park"). Conservative: anything
+ * not matched keeps the portal's default level.
+ */
+const LOCAL_BUYER = [
+  /\b(city|town|village) of\b/i,
+  /\bcounty\b/i,
+  /\bschool (district|board)\b/i,
+  /\bdistrict school board\b/i,
+  /\bpublic schools\b/i,
+  /\b(housing|port|airport|aviation|transit|expressway|utilit(y|ies)|parking) authority\b/i,
+  /\bcommunity redevelopment agency\b/i,
+  /\bsheriff\b/i,
+  /\bclerk of (the )?(circuit )?court\b/i,
+  /\b(property appraiser|tax collector|supervisor of elections)\b/i,
+];
+
+export function isLocalBuyerName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  return LOCAL_BUYER.some((re) => re.test(name));
+}
