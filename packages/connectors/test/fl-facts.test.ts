@@ -30,6 +30,7 @@ const page = (state: string, agency = "") => `<html><body><form method="post" ac
   <option ${agency ? "" : 'selected="selected" '}value="">ALL AGENCIES</option>
   <option ${agency === "310000" ? 'selected="selected" ' : ""}value="310000">EXECUTIVE OFFICE OF THE GOVERNOR</option>
   <option ${agency === "370000" ? 'selected="selected" ' : ""}value="370000">DEPARTMENT OF ENVIRONMENTAL PROTECTION</option>
+  <option ${agency === "620000" ? 'selected="selected" ' : ""}value="620000">DEPARTMENT OF MILITARY AFFAIRS</option>
 </select>
 <input type="text" name="ctl00$PC$txtVendorName" value="" />
 <input type="text" name="ctl00$PC$txtBeginDate" value="" />
@@ -105,6 +106,7 @@ describe("FACTS export parsing", () => {
     expect([...agencyOptions(page("s"))]).toEqual([
       ["310000", "EXECUTIVE OFFICE OF THE GOVERNOR"],
       ["370000", "DEPARTMENT OF ENVIRONMENTAL PROTECTION"],
+      ["620000", "DEPARTMENT OF MILITARY AFFAIRS"],
     ]);
   });
 });
@@ -136,6 +138,14 @@ describe("FACTS collector", () => {
       }
       const agency = body.get("ctl00$PC$ddlAgency") ?? "";
       lastKind = body.get("ctl00$PC$rblSrchOption") ?? "";
+      // Military Affairs awards no grants: FACTS answers with its no-results message and no export link.
+      if (agency === "620000" && lastKind === "G")
+        return new Response(
+          page(`results-${agency}`, agency).replace(
+            "</form>",
+            "<span>No results found for the selected criteria.</span></form>",
+          ),
+        );
       return new Response(page(`results-${agency}`, agency));
     };
     return { posts, fetchImpl: fetchImpl as unknown as typeof fetch };
@@ -193,6 +203,24 @@ describe("FACTS collector", () => {
     expect(mixed.records).toHaveLength(30);
     expect(mixed.notes.join(" ")).toMatch(/999999 is not in the FACTS agency list/);
     expect(mixed.notes.join(" ")).toMatch(/ENVIRONMENTAL PROTECTION \(370000\) contracts: HTTP 404/);
+  });
+
+  it("treats FACTS's no-results answer as zero rows, not a failure", async () => {
+    const s = site();
+    const run = await new FlFactsCollector({
+      http: client(s.fetchImpl),
+      agencies: ["620000"],
+      beginSince: "2023-10-01T00:00:00.000Z",
+      now: () => AT,
+    }).fetch({ since: "2023-10-01T00:00:00.000Z", until: AT });
+    expect(run.complete).toBe(true);
+    expect(run.notes).toEqual([
+      "DEPARTMENT OF MILITARY AFFAIRS contracts: 30 rows",
+      "DEPARTMENT OF MILITARY AFFAIRS grants: 0 rows (no results on FACTS)",
+    ]);
+    expect(run.captures).toHaveLength(1);
+    // No export is attempted after a no-results search.
+    expect(s.posts.filter((p) => p.get("__EVENTTARGET") === "ctl00$PC$hlkExport")).toHaveLength(1);
   });
 
   it("gives repeated agency/type/id rows distinct keys and drops exact repeats", async () => {

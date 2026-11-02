@@ -25,6 +25,8 @@ const AGENCY_FIELD = "ctl00$PC$ddlAgency";
 const BEGIN_FIELD = "ctl00$PC$txtBeginDate";
 const OPTION_FIELD = "ctl00$PC$rblSrchOption";
 const EXPORT_TARGET = "ctl00$PC$hlkExport";
+/** FACTS's results page when a search matches nothing; it has no export link, so there is nothing to export. */
+const NO_RESULTS = "No results found for the selected criteria";
 
 /**
  * Agencies collected by default: emergency management (the Division of Emergency Management sits under the
@@ -282,6 +284,11 @@ export class FlFactsCollector {
     {
       try {
         const csv = await this.exportAgency(code, begin, KIND_OPTION[kind]);
+        if (csv === null) {
+          // A real empty answer (e.g. an agency that awards no grants), not a failure.
+          run.notes.push(`${name} ${kind}: 0 rows (no results on FACTS)`);
+          return;
+        }
         const request = { agency: code, agencyName: name, beginDate: begin, kind };
         run.captures.push({
           source: this.id,
@@ -316,7 +323,8 @@ export class FlFactsCollector {
   }
 
   /** Search one agency, then export the result. A fresh page per agency keeps the form state consistent. */
-  private async exportAgency(code: string, begin: string, option: string): Promise<string> {
+  /** The export CSV, or null when FACTS reports no results for the search. */
+  private async exportAgency(code: string, begin: string, option: string): Promise<string | null> {
     const http = this.opts.http;
     const page = await http.text(FACTS_SEARCH);
     if (!page.includes(AGENCY_FIELD)) throw new Error("search page has no agency list (site changed?)");
@@ -328,6 +336,7 @@ export class FlFactsCollector {
     search.set("__EVENTARGUMENT", "");
     search.append("ctl00$PC$btnSearch", "Search");
     const results = await http.text(FACTS_SEARCH, form(search));
+    if (results.includes(NO_RESULTS)) return null;
     const exp = formFields(results);
     exp.set("__EVENTTARGET", EXPORT_TARGET);
     exp.set("__EVENTARGUMENT", "");
